@@ -145,8 +145,12 @@ analyze an HA-style states JSON dump and classify entities as `mappable`,
 `manual_review`, or `unsupported`, but it does not become a permanent bridge or
 delegate physical safety to Home Assistant.
 
+GenieOS connectivity is modeled as a structured report boundary. GenieOS can
+publish discovered Matter, Thread, Zigbee, BLE, Wi-Fi, UART, or ESP32-C6-backed
+devices through `apply_connectivity_report`; the runtime translates those into
+entities and still owns safety checks for later actuation.
+
 ## Next Alpha Targets
 
 - initial MCP tool/resource surface
-- ESP32-C6 Thread/Matter capability boundary with GenieOS
 - support-bundle integration with `genie-ctl`

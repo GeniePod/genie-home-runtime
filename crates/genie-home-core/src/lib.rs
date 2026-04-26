@@ -5,6 +5,7 @@
 //! and audit entries.
 
 pub mod command;
+pub mod connectivity;
 pub mod entity;
 pub mod migration;
 pub mod protocol;
@@ -12,6 +13,10 @@ pub mod runtime;
 pub mod safety;
 
 pub use command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
+pub use connectivity::{
+    ConnectivityApplyResult, ConnectivityDevice, ConnectivityEntity, ConnectivityProtocol,
+    ConnectivityReport,
+};
 pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 pub use migration::{
     HomeAssistantEntityRecord, MigrationCandidate, MigrationCompatibility, MigrationCounts,

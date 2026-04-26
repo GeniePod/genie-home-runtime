@@ -1,4 +1,5 @@
 use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
+use crate::connectivity::{ConnectivityApplyResult, ConnectivityReport};
 use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 use crate::protocol::{CommandResponse, EntitySnapshot, RuntimeRequest, RuntimeResponse};
 use crate::safety::{SafetyDecision, SafetyPolicy, evaluate_command};
@@ -110,6 +111,10 @@ impl HomeRuntime {
                     },
                 }
             }
+            RuntimeRequest::ApplyConnectivityReport { report } => {
+                let result = self.apply_connectivity_report(report);
+                RuntimeResponse::ConnectivityApplied { result }
+            }
         }
     }
 
@@ -145,6 +150,24 @@ impl HomeRuntime {
             })
             .to_string()
         })
+    }
+
+    pub fn apply_connectivity_report(
+        &mut self,
+        report: ConnectivityReport,
+    ) -> ConnectivityApplyResult {
+        let mut entities_upserted = 0;
+        for device in &report.devices {
+            for entity in &device.entities {
+                self.upsert_entity(entity.clone().into_entity());
+                entities_upserted += 1;
+            }
+        }
+        ConnectivityApplyResult {
+            source: report.source,
+            devices_seen: report.devices.len(),
+            entities_upserted,
+        }
     }
 
     fn apply_state_change(&mut self, command: &HomeCommand) {
@@ -312,5 +335,23 @@ mod tests {
 
         assert_eq!(second.audit().len(), 1);
         assert_eq!(second.graph().get(&id).unwrap().state, EntityState::Off);
+    }
+
+    #[test]
+    fn applies_connectivity_report_to_entity_graph() {
+        let mut runtime = HomeRuntime::with_default_policy();
+        let report = ConnectivityReport::esp32c6_thread_demo().unwrap();
+        let response = runtime.handle_request(RuntimeRequest::ApplyConnectivityReport { report });
+
+        let RuntimeResponse::ConnectivityApplied { result } = response else {
+            panic!("expected connectivity apply response");
+        };
+        assert_eq!(result.devices_seen, 1);
+        assert_eq!(result.entities_upserted, 1);
+        assert!(
+            runtime
+                .graph()
+                .contains(&EntityId::new("light.thread_demo").unwrap())
+        );
     }
 }

@@ -55,6 +55,7 @@ Implemented now:
 - JSONL audit persistence for executed runtime decisions
 - local JSON support bundle for field diagnostics
 - Home Assistant states compatibility report for migration planning
+- GenieOS connectivity report contract for discovered devices
 - reference systemd packaging for a production local socket service
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
@@ -117,6 +118,12 @@ Send a request from another terminal:
 ```bash
 echo '{"type":"status"}' \
   | cargo run -p genie-home-runtime -- request /tmp/genie-home-runtime.sock
+```
+
+Generate a sample GenieOS connectivity report request:
+
+```bash
+cargo run -p genie-home-runtime -- connectivity-demo
 ```
 
 Inspect recent audit entries:

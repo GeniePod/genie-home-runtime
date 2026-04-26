@@ -1,7 +1,8 @@
 use anyhow::Result;
 use genie_home_core::{
-    AuditEntry, Entity, RuntimeRequest, RuntimeResponse, build_home_assistant_migration_report,
-    demo_runtime, demo_turn_on_kitchen_command, parse_home_assistant_entities_json,
+    AuditEntry, ConnectivityReport, Entity, RuntimeRequest, RuntimeResponse,
+    build_home_assistant_migration_report, demo_runtime, demo_turn_on_kitchen_command,
+    parse_home_assistant_entities_json,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -22,6 +23,7 @@ fn main() -> Result<()> {
         "entities" => list_entities()?,
         "evaluate" => handle_json_request(false)?,
         "execute" => handle_json_request(true)?,
+        "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
         "support-bundle" => print_support_bundle(
             args.get(2)
@@ -73,6 +75,7 @@ COMMANDS:
     entities  Print demo entity graph
     evaluate  Read a HomeCommand JSON from stdin and evaluate without executing
     execute   Read a HomeCommand JSON from stdin and execute if allowed
+    connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
     support-bundle  Print local JSON diagnostics for support
     serve     Serve RuntimeRequest JSON over a Unix socket
@@ -123,6 +126,12 @@ fn print_ha_compat_report(path: Option<&str>) -> Result<()> {
     let records = parse_home_assistant_entities_json(&input).map_err(anyhow::Error::msg)?;
     let report = build_home_assistant_migration_report(records);
     print_stdout_line(&serde_json::to_string_pretty(&report)?)
+}
+
+fn print_connectivity_demo() -> Result<()> {
+    let report = ConnectivityReport::esp32c6_thread_demo()?;
+    let request = RuntimeRequest::ApplyConnectivityReport { report };
+    print_stdout_line(&serde_json::to_string_pretty(&request)?)
 }
 
 fn read_path_or_stdin(path: Option<&str>) -> Result<String> {
@@ -190,7 +199,7 @@ fn serve(socket_path: &str, audit_log_path: &str, state_db_path: &str) -> Result
                 stream.read_to_string(&mut input)?;
                 let audit_start = runtime.audit_len();
                 let response = handle_runtime_request(&mut runtime, &input);
-                if matches!(&response, RuntimeResponse::Command { result } if result.executed) {
+                if response_persists_entities(&response) {
                     state_store.save_entities(runtime.graph().entities())?;
                 }
                 let output = serialize_runtime_response(&response);
@@ -330,6 +339,11 @@ fn serialize_runtime_response(response: &RuntimeResponse) -> String {
         })
         .to_string()
     })
+}
+
+fn response_persists_entities(response: &RuntimeResponse) -> bool {
+    matches!(response, RuntimeResponse::Command { result } if result.executed)
+        || matches!(response, RuntimeResponse::ConnectivityApplied { result } if result.entities_upserted > 0)
 }
 
 struct SqliteStateStore {
@@ -478,5 +492,18 @@ mod tests {
         assert_eq!(report.counts.mappable, 1);
         assert_eq!(report.counts.manual_review, 1);
         assert_eq!(report.counts.unsupported, 1);
+    }
+
+    #[test]
+    fn connectivity_apply_response_triggers_state_persistence() {
+        let response = RuntimeResponse::ConnectivityApplied {
+            result: genie_home_core::ConnectivityApplyResult {
+                source: "test".into(),
+                devices_seen: 1,
+                entities_upserted: 1,
+            },
+        };
+
+        assert!(response_persists_entities(&response));
     }
 }
