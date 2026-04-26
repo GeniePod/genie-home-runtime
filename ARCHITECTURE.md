@@ -108,6 +108,8 @@ The first stable boundary is JSON-shaped and intentionally small:
 - `audit`: recent runtime decisions
 - `events`: recent state/service/connectivity/automation events
 - `evaluate`: return a safety decision without mutating state
+- `issue_approval`: issue a runtime-scoped approval grant for a command that
+  requires confirmation
 - `execute`: apply the command only if the deterministic safety policy allows it
 - `call_service`: translate an HA-style domain service call into safety-gated
   Genie actions
@@ -125,6 +127,11 @@ The first stable boundary is JSON-shaped and intentionally small:
 `evaluate` is the preferred first call from `genie-claw` when it needs to ask
 "can this physical action happen?" before presenting confirmation UI or sending
 an execution request.
+
+When a command requires confirmation, upper layers should call `issue_approval`
+after user confirmation and attach the returned approval grant to the later
+`execute` command. The runtime verifies that the grant was issued by the same
+runtime and that it matches the exact entity/action scope.
 
 The first process boundary is a local Unix socket. This intentionally avoids a
 LAN-exposed HTTP surface for physical control. The default development socket

@@ -110,6 +110,20 @@ pub fn default_mcp_surface() -> McpSurface {
                 }),
             ),
             tool(
+                "home.issue_approval",
+                "Issue a runtime-scoped approval grant for a command that requires confirmation.",
+                vec![McpPermission::HomeActuate],
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["command", "approved_by"],
+                    "properties": {
+                        "command": {"type": "object"},
+                        "approved_by": {"type": "string"}
+                    },
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
                 "home.execute",
                 "Execute a physical home command only if the deterministic runtime safety policy allows it.",
                 vec![McpPermission::HomeActuate],

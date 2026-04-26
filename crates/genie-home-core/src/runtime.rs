@@ -1,18 +1,20 @@
 use crate::automation::{
     Automation, AutomationBlock, AutomationCondition, AutomationTickResult, AutomationTrigger,
 };
-use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
+use crate::command::{
+    ActionApproval, CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector,
+};
 use crate::connectivity::{
     ConnectivityApplyResult, ConnectivityReport, StateApplyResult, StateReport,
 };
 use crate::device::{Device, DeviceId, DeviceRegistry};
-use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
+use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState, SafetyClass};
 use crate::event::{RuntimeEvent, RuntimeEventKind};
 use crate::genieos::{GenieOsApplyResult, GenieOsMessage};
 use crate::hardware::default_hardware_inventory;
 use crate::protocol::{
-    CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot, EntitySnapshot,
-    RuntimeRequest, RuntimeResponse,
+    ApprovalIssueResult, CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot,
+    EntitySnapshot, RuntimeRequest, RuntimeResponse,
 };
 use crate::safety::{SafetyDecision, SafetyPolicy, SafetyReason, evaluate_command};
 use crate::scene::Scene;
@@ -36,6 +38,7 @@ pub struct RuntimeStatus {
     pub entity_count: usize,
     pub scene_count: usize,
     pub automation_count: usize,
+    pub approval_count: usize,
     pub audit_count: usize,
     pub event_count: usize,
     pub safety_policy: SafetyPolicy,
@@ -55,6 +58,8 @@ pub struct HomeRuntime {
     graph: EntityGraph,
     scenes: BTreeMap<EntityId, Scene>,
     automations: BTreeMap<String, Automation>,
+    #[serde(default)]
+    approvals: BTreeMap<String, ActionApproval>,
     policy: SafetyPolicy,
     audit: Vec<AuditEntry>,
     events: Vec<RuntimeEvent>,
@@ -67,6 +72,7 @@ impl HomeRuntime {
             devices: DeviceRegistry::default(),
             scenes: BTreeMap::new(),
             automations: BTreeMap::new(),
+            approvals: BTreeMap::new(),
             policy,
             audit: Vec::new(),
             events: Vec::new(),
@@ -119,6 +125,7 @@ impl HomeRuntime {
             entity_count: self.graph.len(),
             scene_count: self.scenes.len(),
             automation_count: self.automations.len(),
+            approval_count: self.approvals.len(),
             audit_count: self.audit.len(),
             event_count: self.events.len(),
             safety_policy: self.policy.clone(),
@@ -142,7 +149,47 @@ impl HomeRuntime {
     }
 
     pub fn evaluate(&self, command: &HomeCommand) -> SafetyDecision {
-        evaluate_command(&self.graph, command, &self.policy)
+        let decision = evaluate_command(&self.graph, command, &self.policy);
+        if decision.allowed
+            && self.command_requires_issued_approval(command)
+            && !self.has_issued_approval(command)
+        {
+            return SafetyDecision::block(
+                SafetyReason::ApprovalRequired,
+                "approval token was not issued by this runtime",
+            );
+        }
+        decision
+    }
+
+    fn command_requires_issued_approval(&self, command: &HomeCommand) -> bool {
+        if !command.confirmed || command.approval.is_none() {
+            return false;
+        }
+        let Some(entity) = self.graph.get(&command.action.target.entity_id) else {
+            return false;
+        };
+        entity.safety_class == SafetyClass::Critical
+            || (self.policy.require_structured_approval_for_indirect
+                && matches!(
+                    command.origin,
+                    CommandOrigin::Agent
+                        | CommandOrigin::Automation
+                        | CommandOrigin::Schedule
+                        | CommandOrigin::Bridge
+                        | CommandOrigin::LocalApi
+                )
+                && (entity.safety_class == SafetyClass::Sensitive
+                    || command.action.kind.is_sensitive()))
+    }
+
+    fn has_issued_approval(&self, command: &HomeCommand) -> bool {
+        let Some(approval) = command.approval.as_ref() else {
+            return false;
+        };
+        self.approvals
+            .get(&approval.token_id)
+            .is_some_and(|issued| issued == approval && issued.is_valid_for(&command.action))
     }
 
     pub fn execute(&mut self, command: HomeCommand) -> SafetyDecision {
@@ -212,6 +259,12 @@ impl HomeRuntime {
                     },
                 }
             }
+            RuntimeRequest::IssueApproval {
+                command,
+                approved_by,
+            } => RuntimeResponse::ApprovalIssued {
+                result: self.issue_approval(command, approved_by),
+            },
             RuntimeRequest::Execute { command } => {
                 let decision = self.execute(command);
                 RuntimeResponse::Command {
@@ -483,6 +536,40 @@ impl HomeRuntime {
             GenieOsMessage::StateReport { report } => GenieOsApplyResult::StateApplied {
                 result: self.apply_state_report(report),
             },
+        }
+    }
+
+    pub fn issue_approval(
+        &mut self,
+        mut command: HomeCommand,
+        approved_by: impl Into<String>,
+    ) -> ApprovalIssueResult {
+        command.confirmed = false;
+        command.approval = None;
+        let decision = evaluate_command(&self.graph, &command, &self.policy);
+        if !matches!(
+            decision.reason,
+            SafetyReason::ConfirmationRequired | SafetyReason::CriticalActionBlocked
+        ) {
+            return ApprovalIssueResult {
+                issued: false,
+                approval: None,
+                decision,
+            };
+        }
+
+        let approved_by = approved_by.into();
+        let token_id = format!(
+            "approval-{}-{}",
+            self.approvals.len() + 1,
+            OffsetDateTime::now_utc().unix_timestamp_nanos()
+        );
+        let approval = ActionApproval::for_action(token_id.clone(), approved_by, &command.action);
+        self.approvals.insert(token_id, approval.clone());
+        ApprovalIssueResult {
+            issued: true,
+            approval: Some(approval),
+            decision: SafetyDecision::allow(),
         }
     }
 
@@ -917,6 +1004,51 @@ mod tests {
         assert!(!result.executed);
         assert_eq!(runtime.audit().len(), 0);
         assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::Off);
+    }
+
+    #[test]
+    fn runtime_rejects_forged_scoped_approval() {
+        let id = EntityId::new("lock.front_door").unwrap();
+        let runtime = demo_runtime();
+        let command = HomeCommand::new(
+            CommandOrigin::LocalApi,
+            HomeAction {
+                target: TargetSelector::exact(id),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            },
+        )
+        .approved("fake-token", "dashboard");
+
+        let decision = runtime.evaluate(&command);
+        assert!(!decision.allowed);
+        assert_eq!(decision.reason, SafetyReason::ApprovalRequired);
+    }
+
+    #[test]
+    fn runtime_issued_approval_allows_sensitive_action() {
+        let id = EntityId::new("lock.front_door").unwrap();
+        let mut runtime = demo_runtime();
+        let command = HomeCommand::new(
+            CommandOrigin::LocalApi,
+            HomeAction {
+                target: TargetSelector::exact(id.clone()),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            },
+        );
+
+        let approval = runtime.issue_approval(command.clone(), "dashboard");
+        assert!(approval.issued);
+        let mut approved_command = command.confirmed();
+        approved_command.approval = approval.approval;
+
+        let decision = runtime.execute(approved_command);
+        assert!(decision.allowed);
+        assert_eq!(
+            runtime.graph().get(&id).unwrap().state,
+            EntityState::Unlocked
+        );
     }
 
     #[test]

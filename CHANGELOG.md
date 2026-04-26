@@ -69,3 +69,5 @@ Initial scaffold for Genie Home Runtime.
   degraded radio links, and command latency.
 - Scoped command approvals for confirmed indirect sensitive actions, preventing
   generic confirmation flags from bypassing safety policy.
+- Runtime-issued approval grants and MCP tool surface for safe confirmation
+  handoff before executing sensitive physical actions.

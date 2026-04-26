@@ -79,6 +79,7 @@ Implemented now:
 - MCP-facing tool/resource manifest with permission labels for `genie-claw`
 - local MCP-style stdio JSON-RPC bridge for tool/resource discovery and
   `tools/call` execution against the runtime API
+- runtime-issued approval grants for confirmed sensitive physical actions
 - deterministic mock hardware simulator with Thread, Matter, Zigbee, and BLE
   reference devices plus media/vacuum/alarm devices for hardware-free tests
 - deterministic mock fault-injection scenario for offline devices, degraded

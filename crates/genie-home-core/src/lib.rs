@@ -59,8 +59,8 @@ pub use mock_hardware::{
     mock_turn_on_thread_lamp_command, run_mock_hardware_fault_scenario,
 };
 pub use protocol::{
-    CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot, EntitySnapshot,
-    ExecuteCommandRequest, RuntimeRequest, RuntimeResponse,
+    ApprovalIssueResult, CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot,
+    EntitySnapshot, ExecuteCommandRequest, RuntimeRequest, RuntimeResponse,
 };
 pub use runtime::{
     AuditEntry, HomeRuntime, RuntimeStatus, demo_runtime, demo_turn_on_kitchen_command,

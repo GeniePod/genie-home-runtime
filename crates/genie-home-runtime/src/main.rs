@@ -539,6 +539,10 @@ fn mcp_tool_to_runtime_request(params: &serde_json::Value) -> Result<RuntimeRequ
         "home.evaluate" => Ok(RuntimeRequest::Evaluate {
             command: required_argument(arguments, "command")?,
         }),
+        "home.issue_approval" => Ok(RuntimeRequest::IssueApproval {
+            command: required_argument(arguments.clone(), "command")?,
+            approved_by: required_argument(arguments, "approved_by")?,
+        }),
         "home.execute" => Ok(RuntimeRequest::Execute {
             command: required_argument(arguments, "command")?,
         }),

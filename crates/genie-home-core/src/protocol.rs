@@ -1,9 +1,10 @@
 use crate::{
-    AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
-    Device, DomainSupport, Entity, EntityId, GenieOsApplyResult, GenieOsMessage, HardwareInventory,
-    HomeCommand, RuntimeEvent, RuntimeSnapshot, RuntimeStatus, SafetyDecision, Scene,
-    SchedulerCatchUpPolicy, SchedulerRunResult, SchedulerWindow, ServiceCall, ServiceCallResult,
-    ServiceSpec, SnapshotApplyResult, StateApplyResult, StateReport, ValidationReport,
+    ActionApproval, AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult,
+    ConnectivityReport, Device, DomainSupport, Entity, EntityId, GenieOsApplyResult,
+    GenieOsMessage, HardwareInventory, HomeCommand, RuntimeEvent, RuntimeSnapshot, RuntimeStatus,
+    SafetyDecision, Scene, SchedulerCatchUpPolicy, SchedulerRunResult, SchedulerWindow,
+    ServiceCall, ServiceCallResult, ServiceSpec, SnapshotApplyResult, StateApplyResult,
+    StateReport, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +32,10 @@ pub enum RuntimeRequest {
     },
     Evaluate {
         command: HomeCommand,
+    },
+    IssueApproval {
+        command: HomeCommand,
+        approved_by: String,
     },
     Execute {
         command: HomeCommand,
@@ -91,6 +96,7 @@ pub enum RuntimeResponse {
     Scenes { scenes: Vec<Scene> },
     Snapshot { snapshot: RuntimeSnapshot },
     SnapshotApplied { result: SnapshotApplyResult },
+    ApprovalIssued { result: ApprovalIssueResult },
     Command { result: CommandResponse },
     ServiceCall { result: ServiceCallResult },
     ConfigChanged { result: ConfigChangeResult },
@@ -100,6 +106,13 @@ pub enum RuntimeResponse {
     AutomationTick { result: AutomationTickResult },
     SchedulerRun { result: SchedulerRunResult },
     Error { error: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApprovalIssueResult {
+    pub issued: bool,
+    pub approval: Option<ActionApproval>,
+    pub decision: SafetyDecision,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
