@@ -19,6 +19,10 @@ used as a local reference for domain coverage, integration behavior, and entity
 semantics. The runtime itself is Rust-first, local-first, deterministic, and
 designed for AI-native physical safety.
 
+This project is inspired by Home Assistant, which is licensed under Apache
+2.0. All code in this repository is independently implemented in Rust unless
+explicitly stated otherwise.
+
 ## Ecosystem Position
 
 ```text
