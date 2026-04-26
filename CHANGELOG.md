@@ -71,3 +71,5 @@ Initial scaffold for Genie Home Runtime.
   generic confirmation flags from bypassing safety policy.
 - Runtime-issued approval grants and MCP tool surface for safe confirmation
   handoff before executing sensitive physical actions.
+- HA-style service calls can carry scoped approval grants for equivalent
+  single-target sensitive actions.

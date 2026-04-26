@@ -1,4 +1,6 @@
-use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
+use crate::command::{
+    ActionApproval, CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector,
+};
 use crate::entity::{EntityGraph, EntityId};
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +39,8 @@ pub struct ServiceCall {
     pub origin: CommandOrigin,
     #[serde(default)]
     pub confirmed: bool,
+    #[serde(default)]
+    pub approval: Option<ActionApproval>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -325,6 +329,7 @@ pub fn service_call_to_commands(
         if call.confirmed {
             command = command.confirmed();
         }
+        command.approval = call.approval.clone();
         commands.push(command);
     }
     Ok(commands)
@@ -418,6 +423,7 @@ mod tests {
             data: serde_json::Value::Null,
             origin: CommandOrigin::LocalApi,
             confirmed: false,
+            approval: None,
         };
 
         let commands = service_call_to_commands(&graph, &call).unwrap();
@@ -440,6 +446,7 @@ mod tests {
             data: serde_json::Value::Null,
             origin: CommandOrigin::LocalApi,
             confirmed: false,
+            approval: None,
         };
 
         assert!(matches!(
@@ -500,6 +507,7 @@ mod tests {
                 data: serde_json::Value::Null,
                 origin: CommandOrigin::LocalApi,
                 confirmed: false,
+                approval: None,
             },
         )
         .unwrap();
@@ -514,6 +522,7 @@ mod tests {
                 data: serde_json::Value::Null,
                 origin: CommandOrigin::LocalApi,
                 confirmed: true,
+                approval: None,
             },
         )
         .unwrap();

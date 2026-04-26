@@ -1518,6 +1518,7 @@ mod tests {
                 data: serde_json::Value::Null,
                 origin: CommandOrigin::LocalApi,
                 confirmed: false,
+                approval: None,
             })
             .unwrap();
 
@@ -1546,6 +1547,7 @@ mod tests {
                 data: serde_json::Value::Null,
                 origin: CommandOrigin::LocalApi,
                 confirmed: false,
+                approval: None,
             })
             .unwrap();
 
@@ -1558,6 +1560,42 @@ mod tests {
         assert_eq!(
             runtime.graph().get(&lock_id).unwrap().state,
             EntityState::Locked
+        );
+    }
+
+    #[test]
+    fn service_call_can_use_runtime_issued_approval() {
+        let lock_id = EntityId::new("lock.front_door").unwrap();
+        let mut runtime = demo_runtime();
+        let command = HomeCommand::new(
+            CommandOrigin::LocalApi,
+            HomeAction {
+                target: TargetSelector::exact(lock_id.clone()),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            },
+        );
+        let approval = runtime.issue_approval(command, "dashboard");
+        assert!(approval.issued);
+
+        let result = runtime
+            .call_service(ServiceCall {
+                domain: "lock".into(),
+                service: "unlock".into(),
+                target: crate::ServiceTarget {
+                    entity_ids: vec![lock_id.clone()],
+                },
+                data: serde_json::Value::Null,
+                origin: CommandOrigin::LocalApi,
+                confirmed: true,
+                approval: approval.approval,
+            })
+            .unwrap();
+
+        assert_eq!(result.executed, 1);
+        assert_eq!(
+            runtime.graph().get(&lock_id).unwrap().state,
+            EntityState::Unlocked
         );
     }
 

@@ -133,6 +133,11 @@ after user confirmation and attach the returned approval grant to the later
 `execute` command. The runtime verifies that the grant was issued by the same
 runtime and that it matches the exact entity/action scope.
 
+The same approval grant can be attached to an HA-style `call_service` request
+for the equivalent single-target service/action. Multi-target sensitive service
+calls remain all-or-nothing and must not use a single grant as a blanket approval
+for unrelated targets.
+
 The first process boundary is a local Unix socket. This intentionally avoids a
 LAN-exposed HTTP surface for physical control. The default development socket
 path is:
