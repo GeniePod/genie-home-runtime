@@ -1,0 +1,2 @@
+d /run/geniepod 0770 geniepod geniepod -
+d /var/lib/geniepod 0770 geniepod geniepod -

@@ -128,9 +128,20 @@ state and audit files. This is intentionally a CLI path first, not a network
 endpoint, so field diagnostics do not expand the physical-control attack
 surface.
 
+Reference systemd packaging serves the production socket from:
+
+```text
+/run/geniepod/home-runtime.sock
+```
+
+and stores durable runtime files under:
+
+```text
+/var/lib/geniepod/
+```
+
 ## Next Alpha Targets
 
-- production systemd unit for the Unix-socket API
 - Home Assistant migration compatibility report
 - initial MCP tool/resource surface
 - ESP32-C6 Thread/Matter capability boundary with GenieOS

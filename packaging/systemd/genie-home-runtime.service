@@ -1,0 +1,27 @@
+[Unit]
+Description=Genie Home Runtime
+Documentation=https://github.com/GeniePod/genie-home-runtime
+After=network.target
+
+[Service]
+Type=simple
+User=geniepod
+Group=geniepod
+RuntimeDirectory=geniepod
+RuntimeDirectoryMode=0770
+StateDirectory=geniepod
+StateDirectoryMode=0770
+UMask=0007
+ExecStart=/opt/geniepod/bin/genie-home-runtime serve /run/geniepod/home-runtime.sock /var/lib/geniepod/home-runtime-audit.jsonl /var/lib/geniepod/home-runtime-state.sqlite3
+Restart=always
+RestartSec=2
+
+# Keep the physical-control runtime narrow by default.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/geniepod /var/lib/geniepod
+
+[Install]
+WantedBy=multi-user.target

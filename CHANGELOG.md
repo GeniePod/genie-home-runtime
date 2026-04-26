@@ -20,5 +20,7 @@ Initial scaffold for Genie Home Runtime.
 - Recent audit query support and JSONL audit persistence for executed runtime
   decisions.
 - Local JSON support bundle generation from persisted state and audit files.
+- Reference systemd unit and tmpfiles configuration for the local socket
+  service.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.
