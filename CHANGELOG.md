@@ -14,5 +14,7 @@ Initial scaffold for Genie Home Runtime.
 - CLI status/demo binary.
 - JSON runtime request/response contract for status, entity listing, command
   evaluation, and command execution.
+- Local Unix-socket JSON API plus `request` CLI command for local agent/runtime
+  calls without exposing a network port.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

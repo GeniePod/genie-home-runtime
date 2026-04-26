@@ -105,6 +105,22 @@ impl HomeRuntime {
         }
     }
 
+    pub fn handle_request_json(&mut self, input: &str) -> String {
+        let response = match serde_json::from_str::<RuntimeRequest>(input) {
+            Ok(request) => self.handle_request(request),
+            Err(err) => RuntimeResponse::Error {
+                error: format!("invalid runtime request: {err}"),
+            },
+        };
+        serde_json::to_string(&response).unwrap_or_else(|err| {
+            serde_json::json!({
+                "type": "error",
+                "error": format!("failed to serialize runtime response: {err}")
+            })
+            .to_string()
+        })
+    }
+
     fn apply_state_change(&mut self, command: &HomeCommand) {
         let Some(current) = self.graph.get(&command.action.target.entity_id).cloned() else {
             return;
@@ -218,5 +234,19 @@ mod tests {
         assert!(result.executed);
         assert_eq!(runtime.audit().len(), 1);
         assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::On);
+    }
+
+    #[test]
+    fn handle_request_json_reports_invalid_input() {
+        let mut runtime = demo_runtime();
+        let output = runtime.handle_request_json("{not json");
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(parsed["type"], "error");
+        assert!(
+            parsed["error"]
+                .as_str()
+                .unwrap()
+                .contains("invalid runtime request")
+        );
     }
 }

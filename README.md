@@ -50,6 +50,7 @@ Implemented now:
 - in-memory runtime state
 - appendable audit-entry model
 - JSON request/response contract for status, entity listing, evaluate, and execute
+- local Unix-socket JSON API for `genie-claw` and local tools
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
 
@@ -96,4 +97,17 @@ cargo run -p genie-home-runtime -- demo
 cargo run -p genie-home-runtime -- entities
 echo '{"origin":"voice","action":{"target":{"entity_id":"light.kitchen","confidence":1.0},"kind":"turn_on","value":null},"confirmed":false,"reason":null}' \
   | cargo run -p genie-home-runtime -- evaluate
+```
+
+Run the local runtime socket API:
+
+```bash
+cargo run -p genie-home-runtime -- serve /tmp/genie-home-runtime.sock
+```
+
+Send a request from another terminal:
+
+```bash
+echo '{"type":"status"}' \
+  | cargo run -p genie-home-runtime -- request /tmp/genie-home-runtime.sock
 ```

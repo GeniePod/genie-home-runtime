@@ -97,10 +97,21 @@ The first stable boundary is JSON-shaped and intentionally small:
 "can this physical action happen?" before presenting confirmation UI or sending
 an execution request.
 
+The first process boundary is a local Unix socket. This intentionally avoids a
+LAN-exposed HTTP surface for physical control. The default development socket
+path is:
+
+```text
+/tmp/genie-home-runtime.sock
+```
+
+Production packaging can move this to `/run/geniepod/home-runtime.sock` with
+systemd-owned permissions.
+
 ## Next Alpha Targets
 
 - persisted SQLite state/audit log
-- HTTP or Unix-socket API for `genie-claw`
+- production systemd unit for the Unix-socket API
 - Home Assistant migration compatibility report
 - initial MCP tool/resource surface
 - ESP32-C6 Thread/Matter capability boundary with GenieOS
