@@ -110,6 +110,8 @@ The first stable boundary is JSON-shaped and intentionally small:
 - `upsert_scene` / `delete_scene`: validate and change scene definitions
 - `upsert_automation` / `delete_automation`: validate and change automation
   definitions
+- `apply_state_report`: apply GenieOS state updates for already-discovered
+  entities
 - `run_automation_tick`: evaluate local automations for a scheduler tick
 
 `evaluate` is the preferred first call from `genie-claw` when it needs to ask
@@ -173,6 +175,12 @@ GenieOS connectivity is modeled as a structured report boundary. GenieOS can
 publish discovered Matter, Thread, Zigbee, BLE, Wi-Fi, UART, or ESP32-C6-backed
 devices through `apply_connectivity_report`; the runtime translates those into
 entities and still owns safety checks for later actuation.
+
+After discovery, GenieOS should use `apply_state_report` for hardware-originated
+state changes. The runtime only updates known entities; unknown entity updates
+are reported back instead of silently creating new controls. This keeps
+discovery explicit and prevents malformed hardware messages from expanding the
+actuation surface.
 
 The runtime exposes a hardware inventory API so upper layers can be truthful
 about support. UART and ESP32-C6 are runtime-boundary ready because the runtime

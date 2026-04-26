@@ -207,6 +207,17 @@ pub fn default_mcp_surface() -> McpSurface {
                 }),
             ),
             tool(
+                "home.apply_state_report",
+                "Apply a GenieOS state report for already-discovered entities.",
+                vec![McpPermission::ConnectivityWrite],
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["report"],
+                    "properties": {"report": {"type": "object"}},
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
                 "home.run_automation_tick",
                 "Run local automation evaluation for a scheduler HH:MM tick.",
                 vec![McpPermission::AutomationRun],
@@ -337,6 +348,12 @@ mod tests {
                 .tools
                 .iter()
                 .any(|tool| tool.name == "home.upsert_scene")
+        );
+        assert!(
+            surface
+                .tools
+                .iter()
+                .any(|tool| tool.name == "home.apply_state_report")
         );
         let execute = surface
             .tools

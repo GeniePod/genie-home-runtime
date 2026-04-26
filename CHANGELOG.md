@@ -49,3 +49,5 @@ Initial scaffold for Genie Home Runtime.
   state domains, and planned domains.
 - Validated scene and automation configuration APIs, including delete paths and
   persistence triggers.
+- GenieOS state report API for applying hardware-originated state updates to
+  already-discovered entities.

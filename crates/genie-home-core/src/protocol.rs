@@ -2,7 +2,7 @@ use crate::{
     AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
     Device, DomainSupport, Entity, EntityId, HardwareInventory, HomeCommand, RuntimeEvent,
     RuntimeStatus, SafetyDecision, Scene, ServiceCall, ServiceCallResult, ServiceSpec,
-    ValidationReport,
+    StateApplyResult, StateReport, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,7 @@ pub enum RuntimeRequest {
     UpsertAutomation { automation: Automation },
     DeleteAutomation { automation_id: String },
     ApplyConnectivityReport { report: ConnectivityReport },
+    ApplyStateReport { report: StateReport },
     RunAutomationTick { now_hh_mm: String },
 }
 
@@ -56,6 +57,7 @@ pub enum RuntimeResponse {
     ServiceCall { result: ServiceCallResult },
     ConfigChanged { result: ConfigChangeResult },
     ConnectivityApplied { result: ConnectivityApplyResult },
+    StateApplied { result: StateApplyResult },
     AutomationTick { result: AutomationTickResult },
     Error { error: String },
 }

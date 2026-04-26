@@ -1,7 +1,7 @@
 use anyhow::Result;
 use genie_home_core::{
     AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, RuntimeEvent,
-    RuntimeRequest, RuntimeResponse, Scene, build_home_assistant_import_plan,
+    RuntimeRequest, RuntimeResponse, Scene, StateReport, build_home_assistant_import_plan,
     build_home_assistant_migration_report, default_hardware_inventory, default_mcp_surface,
     demo_runtime, demo_turn_on_kitchen_command, domain_support_matrix,
     parse_home_assistant_entities_json, service_specs,
@@ -42,6 +42,7 @@ fn main() -> Result<()> {
         "delete-scene" => handle_delete_scene(args.get(2).map(String::as_str))?,
         "upsert-automation" => handle_upsert_automation()?,
         "delete-automation" => handle_delete_automation(args.get(2).map(String::as_str))?,
+        "apply-state-report" => handle_state_report()?,
         "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
         "ha-import-plan" => print_ha_import_plan(args.get(2).map(String::as_str))?,
@@ -117,6 +118,7 @@ COMMANDS:
     delete-scene  Delete a scene definition by entity id
     upsert-automation  Read an Automation JSON from stdin and validate/install it
     delete-automation  Delete an automation definition by id
+    apply-state-report  Read a StateReport JSON from stdin and apply entity states
     connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
     ha-import-plan  Print a Genie connectivity import plan from Home Assistant states
@@ -235,6 +237,15 @@ fn handle_delete_automation(automation_id: Option<&str>) -> Result<()> {
     let response = runtime.handle_request(RuntimeRequest::DeleteAutomation {
         automation_id: automation_id.into(),
     });
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn handle_state_report() -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let report: StateReport = serde_json::from_str(&input)?;
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::ApplyStateReport { report });
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
@@ -640,6 +651,7 @@ fn response_persists_entities(response: &RuntimeResponse) -> bool {
         || matches!(response, RuntimeResponse::ServiceCall { result } if result.executed > 0)
         || matches!(response, RuntimeResponse::ConfigChanged { result } if result.changed)
         || matches!(response, RuntimeResponse::ConnectivityApplied { result } if result.entities_upserted > 0)
+        || matches!(response, RuntimeResponse::StateApplied { result } if result.entities_updated > 0)
         || matches!(response, RuntimeResponse::AutomationTick { result } if result.actions_executed > 0)
 }
 
@@ -950,6 +962,20 @@ mod tests {
                 source: "test".into(),
                 devices_seen: 1,
                 entities_upserted: 1,
+            },
+        };
+
+        assert!(response_persists_entities(&response));
+    }
+
+    #[test]
+    fn state_apply_response_triggers_state_persistence() {
+        let response = RuntimeResponse::StateApplied {
+            result: genie_home_core::StateApplyResult {
+                source: "test".into(),
+                updates_seen: 1,
+                entities_updated: 1,
+                unknown_entities: Vec::new(),
             },
         };
 

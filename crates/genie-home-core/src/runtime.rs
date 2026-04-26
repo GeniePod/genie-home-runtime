@@ -2,7 +2,9 @@ use crate::automation::{
     Automation, AutomationBlock, AutomationCondition, AutomationTickResult, AutomationTrigger,
 };
 use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
-use crate::connectivity::{ConnectivityApplyResult, ConnectivityReport};
+use crate::connectivity::{
+    ConnectivityApplyResult, ConnectivityReport, StateApplyResult, StateReport,
+};
 use crate::device::{Device, DeviceId, DeviceRegistry};
 use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 use crate::event::{RuntimeEvent, RuntimeEventKind};
@@ -229,6 +231,10 @@ impl HomeRuntime {
                 let result = self.apply_connectivity_report(report);
                 RuntimeResponse::ConnectivityApplied { result }
             }
+            RuntimeRequest::ApplyStateReport { report } => {
+                let result = self.apply_state_report(report);
+                RuntimeResponse::StateApplied { result }
+            }
             RuntimeRequest::RunAutomationTick { now_hh_mm } => {
                 let result = self.run_automation_tick(now_hh_mm);
                 RuntimeResponse::AutomationTick { result }
@@ -333,6 +339,40 @@ impl HomeRuntime {
                 entities_upserted: result.entities_upserted,
             }));
         result
+    }
+
+    pub fn apply_state_report(&mut self, report: StateReport) -> StateApplyResult {
+        let updates_seen = report.updates.len();
+        let mut entities_updated = 0;
+        let mut unknown_entities = Vec::new();
+
+        for update in report.updates {
+            let Some(current) = self.graph.get(&update.entity_id).cloned() else {
+                unknown_entities.push(update.entity_id);
+                continue;
+            };
+            let old_state = current.state.clone();
+            let mut next = current.with_state(update.state.clone());
+            next.attributes.extend(update.attributes);
+            if old_state != next.state {
+                self.events
+                    .push(RuntimeEvent::new(RuntimeEventKind::StateChanged {
+                        entity_id: next.id.clone(),
+                        old_state,
+                        new_state: next.state.clone(),
+                        origin: CommandOrigin::Bridge,
+                    }));
+            }
+            self.graph.upsert(next);
+            entities_updated += 1;
+        }
+
+        StateApplyResult {
+            source: report.source,
+            updates_seen,
+            entities_updated,
+            unknown_entities,
+        }
     }
 
     pub fn configure_scene(&mut self, scene: Scene) -> ConfigChangeResult {
@@ -937,6 +977,41 @@ mod tests {
                 .unwrap()
                 .device_id
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn applies_state_report_to_existing_entities_only() {
+        let mut runtime = demo_runtime();
+        let kitchen = EntityId::new("light.kitchen").unwrap();
+        let missing = EntityId::new("light.missing").unwrap();
+        let report = StateReport {
+            source: "genie-os-test".into(),
+            updates: vec![
+                crate::EntityStateUpdate {
+                    entity_id: kitchen.clone(),
+                    state: EntityState::On,
+                    attributes: std::collections::BTreeMap::new(),
+                },
+                crate::EntityStateUpdate {
+                    entity_id: missing.clone(),
+                    state: EntityState::On,
+                    attributes: std::collections::BTreeMap::new(),
+                },
+            ],
+        };
+
+        let response = runtime.handle_request(RuntimeRequest::ApplyStateReport { report });
+
+        let RuntimeResponse::StateApplied { result } = response else {
+            panic!("expected state apply response");
+        };
+        assert_eq!(result.updates_seen, 2);
+        assert_eq!(result.entities_updated, 1);
+        assert_eq!(result.unknown_entities, vec![missing]);
+        assert_eq!(
+            runtime.graph().get(&kitchen).unwrap().state,
+            EntityState::On
         );
     }
 

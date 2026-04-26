@@ -58,6 +58,7 @@ Implemented now:
 - self-validation report for runtime registry and automation invariants
 - Home Assistant import plan that converts mappable states into Genie connectivity reports
 - command and action model
+- GenieOS state report path for hardware-originated entity updates
 - deterministic safety policy
 - in-memory runtime state
 - appendable audit-entry model
@@ -140,6 +141,8 @@ echo '{"id":"scene.bedtime","display_name":"Bedtime","actions":[{"target":{"enti
   | cargo run -p genie-home-runtime -- upsert-scene
 echo '{"id":"automation.bedtime","display_name":"Bedtime","enabled":true,"trigger":{"time_of_day":{"hh_mm":"23:00"}},"conditions":[],"actions":[{"target":{"entity_id":"light.kitchen","confidence":1.0},"kind":"turn_off","value":null}]}' \
   | cargo run -p genie-home-runtime -- upsert-automation
+echo '{"source":"genie-os-test","updates":[{"entity_id":"light.kitchen","state":"on","attributes":{}}]}' \
+  | cargo run -p genie-home-runtime -- apply-state-report
 ```
 
 Run the local runtime socket API:

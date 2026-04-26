@@ -1,6 +1,6 @@
 use crate::entity::{Capability, Entity, EntityId, EntityIdError, EntityState, SafetyClass};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -60,6 +60,28 @@ pub struct ConnectivityApplyResult {
     pub source: String,
     pub devices_seen: usize,
     pub entities_upserted: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StateReport {
+    pub source: String,
+    pub updates: Vec<EntityStateUpdate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EntityStateUpdate {
+    pub entity_id: EntityId,
+    pub state: EntityState,
+    #[serde(default)]
+    pub attributes: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StateApplyResult {
+    pub source: String,
+    pub updates_seen: usize,
+    pub entities_updated: usize,
+    pub unknown_entities: Vec<EntityId>,
 }
 
 impl ConnectivityReport {

@@ -26,7 +26,7 @@ pub use automation::{
 pub use command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
 pub use connectivity::{
     ConnectivityApplyResult, ConnectivityDevice, ConnectivityEntity, ConnectivityProtocol,
-    ConnectivityReport,
+    ConnectivityReport, EntityStateUpdate, StateApplyResult, StateReport,
 };
 pub use device::{Device, DeviceId, DeviceIdError, DeviceRegistry};
 pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
