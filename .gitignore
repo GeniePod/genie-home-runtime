@@ -4,6 +4,11 @@
 *.log
 *.tmp
 
+# Local planning docs. Keep product direction private unless explicitly
+# prepared for publication.
+/ROADMAP.md
+/VISION.md
+
 # Local upstream/reference checkouts. These are for study and compatibility
 # mapping only; do not vendor upstream Home Assistant into this Rust runtime.
 /reference/home-assistant-core/
