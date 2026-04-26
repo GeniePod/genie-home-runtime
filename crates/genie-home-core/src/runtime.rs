@@ -1,0 +1,128 @@
+use crate::command::{HomeActionKind, HomeCommand};
+use crate::entity::{Entity, EntityGraph, EntityState};
+use crate::safety::{SafetyDecision, SafetyPolicy, evaluate_command};
+use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeStatus {
+    pub entity_count: usize,
+    pub audit_count: usize,
+    pub safety_policy: SafetyPolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub ts: OffsetDateTime,
+    pub command: HomeCommand,
+    pub decision: SafetyDecision,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HomeRuntime {
+    graph: EntityGraph,
+    policy: SafetyPolicy,
+    audit: Vec<AuditEntry>,
+}
+
+impl HomeRuntime {
+    pub fn new(policy: SafetyPolicy) -> Self {
+        Self {
+            graph: EntityGraph::default(),
+            policy,
+            audit: Vec::new(),
+        }
+    }
+
+    pub fn with_default_policy() -> Self {
+        Self::new(SafetyPolicy::default())
+    }
+
+    pub fn upsert_entity(&mut self, entity: Entity) {
+        self.graph.upsert(entity);
+    }
+
+    pub fn graph(&self) -> &EntityGraph {
+        &self.graph
+    }
+
+    pub fn status(&self) -> RuntimeStatus {
+        RuntimeStatus {
+            entity_count: self.graph.len(),
+            audit_count: self.audit.len(),
+            safety_policy: self.policy.clone(),
+        }
+    }
+
+    pub fn audit(&self) -> &[AuditEntry] {
+        &self.audit
+    }
+
+    pub fn evaluate(&self, command: &HomeCommand) -> SafetyDecision {
+        evaluate_command(&self.graph, command, &self.policy)
+    }
+
+    pub fn execute(&mut self, command: HomeCommand) -> SafetyDecision {
+        let decision = self.evaluate(&command);
+        if decision.allowed {
+            self.apply_state_change(&command);
+        }
+        self.audit.push(AuditEntry {
+            ts: OffsetDateTime::now_utc(),
+            command,
+            decision: decision.clone(),
+        });
+        decision
+    }
+
+    fn apply_state_change(&mut self, command: &HomeCommand) {
+        let Some(current) = self.graph.get(&command.action.target.entity_id).cloned() else {
+            return;
+        };
+        let next_state = match command.action.kind {
+            HomeActionKind::TurnOn => EntityState::On,
+            HomeActionKind::TurnOff => EntityState::Off,
+            HomeActionKind::Lock => EntityState::Locked,
+            HomeActionKind::Unlock => EntityState::Unlocked,
+            HomeActionKind::Open => EntityState::Open,
+            HomeActionKind::Close => EntityState::Closed,
+            HomeActionKind::Toggle => match &current.state {
+                EntityState::On => EntityState::Off,
+                EntityState::Off => EntityState::On,
+                other => other.clone(),
+            },
+            HomeActionKind::SetValue | HomeActionKind::ActivateScene => current.state.clone(),
+        };
+        self.graph.upsert(current.with_state(next_state));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::{CommandOrigin, HomeAction, TargetSelector};
+    use crate::entity::{Capability, EntityId};
+
+    #[test]
+    fn executes_allowed_action_and_records_audit() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut runtime = HomeRuntime::with_default_policy();
+        runtime.upsert_entity(
+            Entity::new(id.clone(), "Kitchen Light")
+                .with_state(EntityState::Off)
+                .with_capability(Capability::Power),
+        );
+        let decision = runtime.execute(HomeCommand::new(
+            CommandOrigin::Dashboard,
+            HomeAction {
+                target: TargetSelector::exact(id.clone()),
+                kind: HomeActionKind::TurnOn,
+                value: None,
+            },
+        ));
+
+        assert!(decision.allowed);
+        assert_eq!(runtime.audit().len(), 1);
+        assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::On);
+    }
+}

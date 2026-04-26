@@ -1,0 +1,10 @@
+/target/
+/.idea/
+/.vscode/
+*.log
+*.tmp
+
+# Local upstream/reference checkouts. These are for study and compatibility
+# mapping only; do not vendor upstream Home Assistant into this Rust runtime.
+/reference/home-assistant-core/
+/reference/home-assistant-core-*/
