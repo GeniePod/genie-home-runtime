@@ -117,6 +117,16 @@ pub fn default_mcp_surface() -> McpSurface {
                 }),
             ),
             tool(
+                "home.events",
+                "Return recent runtime events such as state changes and service calls.",
+                vec![McpPermission::HomeAuditRead],
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 500}},
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
                 "home.apply_connectivity_report",
                 "Apply a GenieOS connectivity report for discovered devices.",
                 vec![McpPermission::ConnectivityWrite],
@@ -168,6 +178,12 @@ pub fn default_mcp_surface() -> McpSurface {
                 "genie-home://audit/recent",
                 "recent_audit",
                 "Recent physical-command safety decisions.",
+                vec![McpPermission::HomeAuditRead],
+            ),
+            resource(
+                "genie-home://events/recent",
+                "recent_events",
+                "Recent runtime events for state, services, connectivity, and automation.",
                 vec![McpPermission::HomeAuditRead],
             ),
             resource(

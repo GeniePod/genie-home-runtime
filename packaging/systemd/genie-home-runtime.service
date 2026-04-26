@@ -12,7 +12,7 @@ RuntimeDirectoryMode=0770
 StateDirectory=geniepod
 StateDirectoryMode=0770
 UMask=0007
-ExecStart=/opt/geniepod/bin/genie-home-runtime serve /run/geniepod/home-runtime.sock /var/lib/geniepod/home-runtime-audit.jsonl /var/lib/geniepod/home-runtime-state.sqlite3
+ExecStart=/opt/geniepod/bin/genie-home-runtime serve /run/geniepod/home-runtime.sock /var/lib/geniepod/home-runtime-audit.jsonl /var/lib/geniepod/home-runtime-state.sqlite3 /var/lib/geniepod/home-runtime-events.jsonl
 Restart=always
 RestartSec=2
 

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use genie_home_core::{
-    AuditEntry, ConnectivityReport, Entity, RuntimeRequest, RuntimeResponse,
+    AuditEntry, ConnectivityReport, Entity, RuntimeEvent, RuntimeRequest, RuntimeResponse,
     build_home_assistant_migration_report, default_mcp_surface, demo_runtime,
     demo_turn_on_kitchen_command, parse_home_assistant_entities_json, service_specs,
 };
@@ -13,6 +13,7 @@ use time::format_description::well_known::Rfc3339;
 
 const DEFAULT_SOCKET_PATH: &str = "/tmp/genie-home-runtime.sock";
 const DEFAULT_AUDIT_LOG_PATH: &str = "/tmp/genie-home-runtime-audit.jsonl";
+const DEFAULT_EVENT_LOG_PATH: &str = "/tmp/genie-home-runtime-events.jsonl";
 const DEFAULT_STATE_DB_PATH: &str = "/tmp/genie-home-runtime-state.sqlite3";
 
 fn main() -> Result<()> {
@@ -22,6 +23,7 @@ fn main() -> Result<()> {
         "demo" => run_demo()?,
         "entities" => list_entities()?,
         "services" => list_services()?,
+        "events" => list_demo_events()?,
         "scenes" => list_scenes()?,
         "automations" => list_automations()?,
         "automation-tick" => {
@@ -40,6 +42,9 @@ fn main() -> Result<()> {
             args.get(3)
                 .map(String::as_str)
                 .unwrap_or(DEFAULT_STATE_DB_PATH),
+            args.get(4)
+                .map(String::as_str)
+                .unwrap_or(DEFAULT_EVENT_LOG_PATH),
         )?,
         "serve" => serve(
             args.get(2)
@@ -51,6 +56,9 @@ fn main() -> Result<()> {
             args.get(4)
                 .map(String::as_str)
                 .unwrap_or(DEFAULT_STATE_DB_PATH),
+            args.get(5)
+                .map(String::as_str)
+                .unwrap_or(DEFAULT_EVENT_LOG_PATH),
         )?,
         "request" => request(
             args.get(2)
@@ -73,8 +81,8 @@ genie-home-runtime
 USAGE:
     genie-home-runtime <COMMAND>
     genie-home-runtime ha-compat-report [HA_STATES_JSON|-]
-    genie-home-runtime support-bundle [AUDIT_LOG] [STATE_DB]
-    genie-home-runtime serve [SOCKET] [AUDIT_LOG] [STATE_DB]
+    genie-home-runtime support-bundle [AUDIT_LOG] [STATE_DB] [EVENT_LOG]
+    genie-home-runtime serve [SOCKET] [AUDIT_LOG] [STATE_DB] [EVENT_LOG]
     genie-home-runtime request [SOCKET]
 
 COMMANDS:
@@ -82,6 +90,7 @@ COMMANDS:
     demo      Run an in-memory safety/action demo
     entities  Print demo entity graph
     services  Print supported HA-style domain services
+    events    Print demo runtime events
     scenes    Print demo scenes
     automations  Print demo automations
     automation-tick  Run demo automations for HH:MM
@@ -118,6 +127,13 @@ fn list_entities() -> Result<()> {
 
 fn list_services() -> Result<()> {
     print_stdout_line(&serde_json::to_string_pretty(&service_specs())?)
+}
+
+fn list_demo_events() -> Result<()> {
+    let mut runtime = demo_runtime();
+    runtime.execute(demo_turn_on_kitchen_command());
+    let response = runtime.handle_request(RuntimeRequest::Events { limit: Some(20) });
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
 fn list_scenes() -> Result<()> {
@@ -163,8 +179,12 @@ fn handle_json_request(execute: bool) -> Result<()> {
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
-fn print_support_bundle(audit_log_path: &str, state_db_path: &str) -> Result<()> {
-    let bundle = build_support_bundle(audit_log_path, state_db_path)?;
+fn print_support_bundle(
+    audit_log_path: &str,
+    state_db_path: &str,
+    event_log_path: &str,
+) -> Result<()> {
+    let bundle = build_support_bundle(audit_log_path, state_db_path, event_log_path)?;
     print_stdout_line(&serde_json::to_string_pretty(&bundle)?)
 }
 
@@ -211,7 +231,12 @@ fn print_stdout_line(output: &str) -> Result<()> {
 }
 
 #[cfg(unix)]
-fn serve(socket_path: &str, audit_log_path: &str, state_db_path: &str) -> Result<()> {
+fn serve(
+    socket_path: &str,
+    audit_log_path: &str,
+    state_db_path: &str,
+    event_log_path: &str,
+) -> Result<()> {
     use std::os::unix::net::UnixListener;
 
     let path = Path::new(socket_path);
@@ -237,11 +262,15 @@ fn serve(socket_path: &str, audit_log_path: &str, state_db_path: &str) -> Result
     }
     let restored = load_audit_entries(audit_log_path)?;
     runtime.restore_audit_entries(restored);
+    let restored_events = load_event_entries(event_log_path)?;
+    runtime.restore_events(restored_events);
     eprintln!("genie-home-runtime listening on {}", path.display());
     eprintln!("audit log: {}", audit_log_path);
+    eprintln!("event log: {}", event_log_path);
     eprintln!("state db: {}", state_db_path);
     eprintln!("entity count: {}", runtime.graph().len());
     eprintln!("restored audit entries: {}", runtime.audit_len());
+    eprintln!("restored runtime events: {}", runtime.event_len());
 
     for stream in listener.incoming() {
         match stream {
@@ -249,12 +278,14 @@ fn serve(socket_path: &str, audit_log_path: &str, state_db_path: &str) -> Result
                 let mut input = String::new();
                 stream.read_to_string(&mut input)?;
                 let audit_start = runtime.audit_len();
+                let event_start = runtime.event_len();
                 let response = handle_runtime_request(&mut runtime, &input);
                 if response_persists_entities(&response) {
                     state_store.save_entities(runtime.graph().entities())?;
                 }
                 let output = serialize_runtime_response(&response);
                 append_new_audit_entries(audit_log_path, runtime.audit_since(audit_start))?;
+                append_new_event_entries(event_log_path, runtime.events_since(event_start))?;
                 stream.write_all(output.as_bytes())?;
                 stream.write_all(b"\n")?;
             }
@@ -268,7 +299,12 @@ fn serve(socket_path: &str, audit_log_path: &str, state_db_path: &str) -> Result
 }
 
 #[cfg(not(unix))]
-fn serve(_socket_path: &str, _audit_log_path: &str, _state_db_path: &str) -> Result<()> {
+fn serve(
+    _socket_path: &str,
+    _audit_log_path: &str,
+    _state_db_path: &str,
+    _event_log_path: &str,
+) -> Result<()> {
     anyhow::bail!("Unix socket runtime API is only supported on Unix targets")
 }
 
@@ -311,6 +347,24 @@ fn append_new_audit_entries(path: &str, entries: &[AuditEntry]) -> Result<()> {
     Ok(())
 }
 
+fn append_new_event_entries(path: &str, entries: &[RuntimeEvent]) -> Result<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    let path = Path::new(path);
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    for entry in entries {
+        serde_json::to_writer(&mut file, entry)?;
+        file.write_all(b"\n")?;
+    }
+    Ok(())
+}
+
 fn load_audit_entries(path: &str) -> Result<Vec<AuditEntry>> {
     let path = Path::new(path);
     if !path.exists() {
@@ -333,11 +387,40 @@ fn load_audit_entries(path: &str) -> Result<Vec<AuditEntry>> {
     Ok(entries)
 }
 
-fn build_support_bundle(audit_log_path: &str, state_db_path: &str) -> Result<serde_json::Value> {
+fn load_event_entries(path: &str) -> Result<Vec<RuntimeEvent>> {
+    let path = Path::new(path);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let file = std::fs::File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut entries = Vec::new();
+    for (index, line) in reader.lines().enumerate() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let entry = serde_json::from_str(line)
+            .map_err(|err| anyhow::anyhow!("invalid event log line {}: {err}", index + 1))?;
+        entries.push(entry);
+    }
+    Ok(entries)
+}
+
+fn build_support_bundle(
+    audit_log_path: &str,
+    state_db_path: &str,
+    event_log_path: &str,
+) -> Result<serde_json::Value> {
     let audit = load_audit_entries(audit_log_path)?;
+    let events = load_event_entries(event_log_path)?;
     let entities = load_entities_from_state_db(state_db_path)?;
     let mut recent_audit = audit.iter().rev().take(20).cloned().collect::<Vec<_>>();
     recent_audit.reverse();
+    let mut recent_events = events.iter().rev().take(50).cloned().collect::<Vec<_>>();
+    recent_events.reverse();
     let generated_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
 
     Ok(serde_json::json!({
@@ -350,6 +433,8 @@ fn build_support_bundle(audit_log_path: &str, state_db_path: &str) -> Result<ser
         "paths": {
             "audit_log": audit_log_path,
             "audit_log_exists": Path::new(audit_log_path).exists(),
+            "event_log": event_log_path,
+            "event_log_exists": Path::new(event_log_path).exists(),
             "state_db": state_db_path,
             "state_db_exists": Path::new(state_db_path).exists(),
         },
@@ -357,9 +442,12 @@ fn build_support_bundle(audit_log_path: &str, state_db_path: &str) -> Result<ser
             "entities": entities.len(),
             "audit_entries": audit.len(),
             "recent_audit_entries": recent_audit.len(),
+            "event_entries": events.len(),
+            "recent_event_entries": recent_events.len(),
         },
         "entities": entities,
         "recent_audit": recent_audit,
+        "recent_events": recent_events,
     }))
 }
 
@@ -514,20 +602,25 @@ mod tests {
     fn support_bundle_reports_counts_without_network() {
         let db_path = temp_db_path("support");
         let audit_path = temp_db_path("support-audit-jsonl");
+        let event_path = temp_db_path("support-event-jsonl");
         let mut store = SqliteStateStore::open(&db_path).unwrap();
         let mut runtime = demo_runtime();
         runtime.execute(demo_turn_on_kitchen_command());
         store.save_entities(runtime.graph().entities()).unwrap();
         append_new_audit_entries(&audit_path, runtime.audit()).unwrap();
+        append_new_event_entries(&event_path, runtime.events()).unwrap();
 
-        let bundle = build_support_bundle(&audit_path, &db_path).unwrap();
+        let bundle = build_support_bundle(&audit_path, &db_path, &event_path).unwrap();
 
         assert_eq!(bundle["schema"], "genie.home.support_bundle.v1");
         assert_eq!(bundle["counts"]["entities"], 3);
         assert_eq!(bundle["counts"]["audit_entries"], 1);
+        assert_eq!(bundle["counts"]["event_entries"], 1);
         assert_eq!(bundle["recent_audit"].as_array().unwrap().len(), 1);
+        assert_eq!(bundle["recent_events"].as_array().unwrap().len(), 1);
         let _ = std::fs::remove_file(db_path);
         let _ = std::fs::remove_file(audit_path);
+        let _ = std::fs::remove_file(event_path);
     }
 
     #[test]

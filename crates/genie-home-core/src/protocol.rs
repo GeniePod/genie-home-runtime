@@ -1,7 +1,7 @@
 use crate::{
     AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
-    Entity, HomeCommand, RuntimeStatus, SafetyDecision, Scene, ServiceCall, ServiceCallResult,
-    ServiceSpec,
+    Entity, HomeCommand, RuntimeEvent, RuntimeStatus, SafetyDecision, Scene, ServiceCall,
+    ServiceCallResult, ServiceSpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +13,7 @@ pub enum RuntimeRequest {
     ListAutomations,
     ListServices,
     Audit { limit: Option<usize> },
+    Events { limit: Option<usize> },
     ListScenes,
     Evaluate { command: HomeCommand },
     Execute { command: HomeCommand },
@@ -36,6 +37,7 @@ pub enum RuntimeResponse {
     Automations { automations: Vec<Automation> },
     Services { services: Vec<ServiceSpec> },
     Audit { entries: Vec<AuditEntry> },
+    Events { events: Vec<RuntimeEvent> },
     Scenes { scenes: Vec<Scene> },
     Command { result: CommandResponse },
     ServiceCall { result: ServiceCallResult },

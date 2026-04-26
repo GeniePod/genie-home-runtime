@@ -8,6 +8,7 @@ pub mod automation;
 pub mod command;
 pub mod connectivity;
 pub mod entity;
+pub mod event;
 pub mod mcp;
 pub mod migration;
 pub mod protocol;
@@ -25,6 +26,7 @@ pub use connectivity::{
     ConnectivityReport,
 };
 pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
+pub use event::{RuntimeEvent, RuntimeEventKind};
 pub use mcp::{McpPermission, McpResourceSpec, McpSurface, McpToolSpec, default_mcp_surface};
 pub use migration::{
     HomeAssistantEntityRecord, MigrationCandidate, MigrationCompatibility, MigrationCounts,

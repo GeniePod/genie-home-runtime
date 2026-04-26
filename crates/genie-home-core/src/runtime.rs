@@ -4,6 +4,7 @@ use crate::automation::{
 use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
 use crate::connectivity::{ConnectivityApplyResult, ConnectivityReport};
 use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
+use crate::event::{RuntimeEvent, RuntimeEventKind};
 use crate::protocol::{CommandResponse, EntitySnapshot, RuntimeRequest, RuntimeResponse};
 use crate::safety::{SafetyDecision, SafetyPolicy, SafetyReason, evaluate_command};
 use crate::scene::Scene;
@@ -20,6 +21,7 @@ pub struct RuntimeStatus {
     pub scene_count: usize,
     pub automation_count: usize,
     pub audit_count: usize,
+    pub event_count: usize,
     pub safety_policy: SafetyPolicy,
 }
 
@@ -38,6 +40,7 @@ pub struct HomeRuntime {
     automations: BTreeMap<String, Automation>,
     policy: SafetyPolicy,
     audit: Vec<AuditEntry>,
+    events: Vec<RuntimeEvent>,
 }
 
 impl HomeRuntime {
@@ -48,6 +51,7 @@ impl HomeRuntime {
             automations: BTreeMap::new(),
             policy,
             audit: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -85,12 +89,21 @@ impl HomeRuntime {
             scene_count: self.scenes.len(),
             automation_count: self.automations.len(),
             audit_count: self.audit.len(),
+            event_count: self.events.len(),
             safety_policy: self.policy.clone(),
         }
     }
 
     pub fn audit(&self) -> &[AuditEntry] {
         &self.audit
+    }
+
+    pub fn events(&self) -> &[RuntimeEvent] {
+        &self.events
+    }
+
+    pub fn restore_events(&mut self, entries: impl IntoIterator<Item = RuntimeEvent>) {
+        self.events.extend(entries);
     }
 
     pub fn restore_audit_entries(&mut self, entries: impl IntoIterator<Item = AuditEntry>) {
@@ -134,6 +147,9 @@ impl HomeRuntime {
             },
             RuntimeRequest::Audit { limit } => RuntimeResponse::Audit {
                 entries: self.recent_audit(limit.unwrap_or(20)),
+            },
+            RuntimeRequest::Events { limit } => RuntimeResponse::Events {
+                events: self.recent_events(limit.unwrap_or(50)),
             },
             RuntimeRequest::ListScenes => RuntimeResponse::Scenes {
                 scenes: self.scenes().cloned().collect(),
@@ -191,6 +207,24 @@ impl HomeRuntime {
         self.audit[start..].to_vec()
     }
 
+    pub fn event_len(&self) -> usize {
+        self.events.len()
+    }
+
+    pub fn events_since(&self, index: usize) -> &[RuntimeEvent] {
+        if index >= self.events.len() {
+            &[]
+        } else {
+            &self.events[index..]
+        }
+    }
+
+    pub fn recent_events(&self, limit: usize) -> Vec<RuntimeEvent> {
+        let len = self.events.len();
+        let start = len.saturating_sub(limit);
+        self.events[start..].to_vec()
+    }
+
     pub fn handle_request_json(&mut self, input: &str) -> String {
         let response = match serde_json::from_str::<RuntimeRequest>(input) {
             Ok(request) => self.handle_request(request),
@@ -218,11 +252,18 @@ impl HomeRuntime {
                 entities_upserted += 1;
             }
         }
-        ConnectivityApplyResult {
+        let result = ConnectivityApplyResult {
             source: report.source,
             devices_seen: report.devices.len(),
             entities_upserted,
-        }
+        };
+        self.events
+            .push(RuntimeEvent::new(RuntimeEventKind::ConnectivityApplied {
+                source: result.source.clone(),
+                devices_seen: result.devices_seen,
+                entities_upserted: result.entities_upserted,
+            }));
+        result
     }
 
     pub fn call_service(
@@ -253,13 +294,21 @@ impl HomeRuntime {
         }
 
         let executed = results.iter().filter(|result| result.executed).count();
-        Ok(ServiceCallResult {
+        let result = ServiceCallResult {
             domain: call.domain,
             service: call.service,
             targets: results.len(),
             executed,
             results,
-        })
+        };
+        self.events
+            .push(RuntimeEvent::new(RuntimeEventKind::ServiceCalled {
+                domain: result.domain.clone(),
+                service: result.service.clone(),
+                targets: result.targets,
+                executed: result.executed,
+            }));
+        Ok(result)
     }
 
     pub fn run_automation_tick(&mut self, now_hh_mm: String) -> AutomationTickResult {
@@ -307,6 +356,13 @@ impl HomeRuntime {
             }
         }
 
+        self.events
+            .push(RuntimeEvent::new(RuntimeEventKind::AutomationTick {
+                now_hh_mm: result.now_hh_mm.clone(),
+                automations_triggered: result.automations_triggered,
+                actions_executed: result.actions_executed,
+                blocked: result.blocked.len(),
+            }));
         result
     }
 
@@ -333,7 +389,7 @@ impl HomeRuntime {
             self.apply_scene_state_change(command);
             return;
         }
-        self.apply_single_state_change(&command.action);
+        self.apply_single_state_change(&command.action, command.origin);
     }
 
     fn apply_scene_state_change(&mut self, command: &HomeCommand) {
@@ -341,14 +397,15 @@ impl HomeRuntime {
             return;
         };
         for action in &scene.actions {
-            self.apply_single_state_change(action);
+            self.apply_single_state_change(action, command.origin);
         }
     }
 
-    fn apply_single_state_change(&mut self, action: &HomeAction) {
+    fn apply_single_state_change(&mut self, action: &HomeAction, origin: CommandOrigin) {
         let Some(current) = self.graph.get(&action.target.entity_id).cloned() else {
             return;
         };
+        let old_state = current.state.clone();
         let next_state = match action.kind {
             HomeActionKind::TurnOn => EntityState::On,
             HomeActionKind::TurnOff => EntityState::Off,
@@ -363,6 +420,15 @@ impl HomeRuntime {
             },
             HomeActionKind::SetValue | HomeActionKind::ActivateScene => current.state.clone(),
         };
+        if old_state != next_state {
+            self.events
+                .push(RuntimeEvent::new(RuntimeEventKind::StateChanged {
+                    entity_id: action.target.entity_id.clone(),
+                    old_state,
+                    new_state: next_state.clone(),
+                    origin,
+                }));
+        }
         self.graph.upsert(current.with_state(next_state));
     }
 
@@ -716,6 +782,12 @@ mod tests {
 
         assert_eq!(result.executed, 1);
         assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::On);
+        assert!(
+            runtime
+                .events()
+                .iter()
+                .any(|event| matches!(event.kind, RuntimeEventKind::ServiceCalled { .. }))
+        );
     }
 
     #[test]
@@ -746,5 +818,36 @@ mod tests {
             runtime.graph().get(&lock_id).unwrap().state,
             EntityState::Locked
         );
+    }
+
+    #[test]
+    fn state_changes_are_emitted_as_runtime_events() {
+        let mut runtime = demo_runtime();
+        runtime.execute(demo_turn_on_kitchen_command());
+
+        assert!(runtime.events().iter().any(|event| {
+            matches!(
+                &event.kind,
+                RuntimeEventKind::StateChanged {
+                    entity_id,
+                    old_state: EntityState::Off,
+                    new_state: EntityState::On,
+                    origin: CommandOrigin::Voice,
+                } if entity_id.as_str() == "light.kitchen"
+            )
+        }));
+    }
+
+    #[test]
+    fn event_request_returns_recent_events() {
+        let mut runtime = demo_runtime();
+        runtime.execute(demo_turn_on_kitchen_command());
+
+        let response = runtime.handle_request(RuntimeRequest::Events { limit: Some(10) });
+
+        let RuntimeResponse::Events { events } = response else {
+            panic!("expected events response");
+        };
+        assert_eq!(events.len(), 1);
     }
 }

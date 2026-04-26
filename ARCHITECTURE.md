@@ -96,6 +96,7 @@ The first stable boundary is JSON-shaped and intentionally small:
 - `list_scenes`: registered scene definitions
 - `list_automations`: registered automation definitions
 - `audit`: recent runtime decisions
+- `events`: recent state/service/connectivity/automation events
 - `evaluate`: return a safety decision without mutating state
 - `execute`: apply the command only if the deterministic safety policy allows it
 - `call_service`: translate an HA-style domain service call into safety-gated
@@ -181,6 +182,10 @@ migration and user familiarity: `light.turn_on`, `lock.unlock`,
 Genie `HomeCommand`s and then evaluated by the same safety layer. A multi-target
 service call is all-or-nothing; if any target is blocked, none of the targets
 are mutated.
+
+Runtime events provide the Home Assistant-style observability plane. State
+changes, service calls, connectivity reports, and automation ticks are emitted
+as structured JSON events and persisted separately from the actuation audit log.
 
 ## Next Alpha Targets
 

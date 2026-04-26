@@ -48,6 +48,7 @@ Implemented now:
 - basic scene model with nested action safety checks
 - basic automation model with scheduler tick execution
 - Home Assistant-style domain service catalog and safety-gated service calls
+- Home Assistant-style runtime event log for state/service/connectivity/automation events
 - command and action model
 - deterministic safety policy
 - in-memory runtime state
@@ -105,6 +106,7 @@ cargo run -p genie-home-runtime -- status
 cargo run -p genie-home-runtime -- demo
 cargo run -p genie-home-runtime -- entities
 cargo run -p genie-home-runtime -- services
+cargo run -p genie-home-runtime -- events
 cargo run -p genie-home-runtime -- scenes
 cargo run -p genie-home-runtime -- automations
 cargo run -p genie-home-runtime -- automation-tick 23:00
@@ -120,7 +122,8 @@ Run the local runtime socket API:
 cargo run -p genie-home-runtime -- serve \
   /tmp/genie-home-runtime.sock \
   /tmp/genie-home-runtime-audit.jsonl \
-  /tmp/genie-home-runtime-state.sqlite3
+  /tmp/genie-home-runtime-state.sqlite3 \
+  /tmp/genie-home-runtime-events.jsonl
 ```
 
 Send a request from another terminal:
@@ -154,7 +157,8 @@ Generate a local support bundle:
 ```bash
 cargo run -p genie-home-runtime -- support-bundle \
   /tmp/genie-home-runtime-audit.jsonl \
-  /tmp/genie-home-runtime-state.sqlite3
+  /tmp/genie-home-runtime-state.sqlite3 \
+  /tmp/genie-home-runtime-events.jsonl
 ```
 
 Generate a Home Assistant migration compatibility report from a states JSON

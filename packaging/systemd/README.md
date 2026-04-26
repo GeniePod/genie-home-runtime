@@ -20,6 +20,9 @@ Persistent runtime files are stored under:
 /var/lib/geniepod/
 ```
 
+The service writes separate durable files for entity state, actuation audit,
+and runtime events.
+
 Install sketch:
 
 ```bash
