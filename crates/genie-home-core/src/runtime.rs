@@ -2,13 +2,16 @@ use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, Tar
 use crate::connectivity::{ConnectivityApplyResult, ConnectivityReport};
 use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 use crate::protocol::{CommandResponse, EntitySnapshot, RuntimeRequest, RuntimeResponse};
-use crate::safety::{SafetyDecision, SafetyPolicy, evaluate_command};
+use crate::safety::{SafetyDecision, SafetyPolicy, SafetyReason, evaluate_command};
+use crate::scene::Scene;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeStatus {
     pub entity_count: usize,
+    pub scene_count: usize,
     pub audit_count: usize,
     pub safety_policy: SafetyPolicy,
 }
@@ -24,6 +27,7 @@ pub struct AuditEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HomeRuntime {
     graph: EntityGraph,
+    scenes: BTreeMap<EntityId, Scene>,
     policy: SafetyPolicy,
     audit: Vec<AuditEntry>,
 }
@@ -32,6 +36,7 @@ impl HomeRuntime {
     pub fn new(policy: SafetyPolicy) -> Self {
         Self {
             graph: EntityGraph::default(),
+            scenes: BTreeMap::new(),
             policy,
             audit: Vec::new(),
         }
@@ -45,13 +50,22 @@ impl HomeRuntime {
         self.graph.upsert(entity);
     }
 
+    pub fn upsert_scene(&mut self, scene: Scene) {
+        self.scenes.insert(scene.id.clone(), scene);
+    }
+
     pub fn graph(&self) -> &EntityGraph {
         &self.graph
+    }
+
+    pub fn scenes(&self) -> impl Iterator<Item = &Scene> {
+        self.scenes.values()
     }
 
     pub fn status(&self) -> RuntimeStatus {
         RuntimeStatus {
             entity_count: self.graph.len(),
+            scene_count: self.scenes.len(),
             audit_count: self.audit.len(),
             safety_policy: self.policy.clone(),
         }
@@ -70,7 +84,11 @@ impl HomeRuntime {
     }
 
     pub fn execute(&mut self, command: HomeCommand) -> SafetyDecision {
-        let decision = self.evaluate(&command);
+        let decision = if command.action.kind == HomeActionKind::ActivateScene {
+            self.evaluate_scene_command(&command)
+        } else {
+            self.evaluate(&command)
+        };
         if decision.allowed {
             self.apply_state_change(&command);
         }
@@ -92,6 +110,9 @@ impl HomeRuntime {
             },
             RuntimeRequest::Audit { limit } => RuntimeResponse::Audit {
                 entries: self.recent_audit(limit.unwrap_or(20)),
+            },
+            RuntimeRequest::ListScenes => RuntimeResponse::Scenes {
+                scenes: self.scenes().cloned().collect(),
             },
             RuntimeRequest::Evaluate { command } => {
                 let decision = self.evaluate(&command);
@@ -171,10 +192,27 @@ impl HomeRuntime {
     }
 
     fn apply_state_change(&mut self, command: &HomeCommand) {
-        let Some(current) = self.graph.get(&command.action.target.entity_id).cloned() else {
+        if command.action.kind == HomeActionKind::ActivateScene {
+            self.apply_scene_state_change(command);
+            return;
+        }
+        self.apply_single_state_change(&command.action);
+    }
+
+    fn apply_scene_state_change(&mut self, command: &HomeCommand) {
+        let Some(scene) = self.scenes.get(&command.action.target.entity_id).cloned() else {
             return;
         };
-        let next_state = match command.action.kind {
+        for action in &scene.actions {
+            self.apply_single_state_change(action);
+        }
+    }
+
+    fn apply_single_state_change(&mut self, action: &HomeAction) {
+        let Some(current) = self.graph.get(&action.target.entity_id).cloned() else {
+            return;
+        };
+        let next_state = match action.kind {
             HomeActionKind::TurnOn => EntityState::On,
             HomeActionKind::TurnOff => EntityState::Off,
             HomeActionKind::Lock => EntityState::Locked,
@@ -190,14 +228,44 @@ impl HomeRuntime {
         };
         self.graph.upsert(current.with_state(next_state));
     }
+
+    fn evaluate_scene_command(&self, command: &HomeCommand) -> SafetyDecision {
+        let scene_activation = self.evaluate(command);
+        if !scene_activation.allowed {
+            return scene_activation;
+        }
+        let Some(scene) = self.scenes.get(&command.action.target.entity_id) else {
+            return SafetyDecision::block(
+                SafetyReason::SceneDefinitionMissing,
+                "scene entity exists but no scene definition is registered",
+            );
+        };
+        for action in &scene.actions {
+            let child = HomeCommand {
+                origin: command.origin,
+                action: action.clone(),
+                confirmed: command.confirmed,
+                reason: command.reason.clone(),
+            };
+            let decision = self.evaluate(&child);
+            if !decision.allowed {
+                return SafetyDecision::block(
+                    SafetyReason::SceneActionBlocked,
+                    format!("scene action blocked: {}", decision.message),
+                );
+            }
+        }
+        SafetyDecision::allow()
+    }
 }
 
 pub fn demo_runtime() -> HomeRuntime {
     let mut runtime = HomeRuntime::with_default_policy();
     let kitchen_light = EntityId::new("light.kitchen").expect("valid demo entity id");
     let front_door = EntityId::new("lock.front_door").expect("valid demo entity id");
+    let movie_scene = EntityId::new("scene.movie_night").expect("valid demo entity id");
     runtime.upsert_entity(
-        Entity::new(kitchen_light, "Kitchen Light")
+        Entity::new(kitchen_light.clone(), "Kitchen Light")
             .with_area("kitchen")
             .with_state(EntityState::Off)
             .with_capability(Capability::Power),
@@ -207,6 +275,19 @@ pub fn demo_runtime() -> HomeRuntime {
             .with_area("entry")
             .with_state(EntityState::Locked)
             .with_capability(Capability::Lock),
+    );
+    runtime.upsert_entity(
+        Entity::new(movie_scene.clone(), "Movie Night")
+            .with_area("living_room")
+            .with_state(EntityState::Off)
+            .with_capability(Capability::SceneActivation),
+    );
+    runtime.upsert_scene(
+        Scene::new(movie_scene, "Movie Night").with_action(HomeAction {
+            target: TargetSelector::exact(kitchen_light),
+            kind: HomeActionKind::TurnOn,
+            value: None,
+        }),
     );
     runtime
 }
@@ -352,6 +433,58 @@ mod tests {
             runtime
                 .graph()
                 .contains(&EntityId::new("light.thread_demo").unwrap())
+        );
+    }
+
+    #[test]
+    fn scene_activation_applies_registered_actions() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut runtime = demo_runtime();
+        let scene_id = EntityId::new("scene.movie_night").unwrap();
+        let decision = runtime.execute(HomeCommand::new(
+            CommandOrigin::Dashboard,
+            HomeAction {
+                target: TargetSelector::exact(scene_id),
+                kind: HomeActionKind::ActivateScene,
+                value: None,
+            },
+        ));
+
+        assert!(decision.allowed);
+        assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::On);
+    }
+
+    #[test]
+    fn scene_activation_does_not_bypass_nested_safety() {
+        let lock_id = EntityId::new("lock.front_door").unwrap();
+        let scene_id = EntityId::new("scene.unlock_home").unwrap();
+        let mut runtime = demo_runtime();
+        runtime.upsert_entity(
+            Entity::new(scene_id.clone(), "Unsafe Unlock Scene")
+                .with_state(EntityState::Off)
+                .with_capability(Capability::SceneActivation),
+        );
+        runtime.upsert_scene(
+            Scene::new(scene_id.clone(), "Unsafe Unlock Scene").with_action(HomeAction {
+                target: TargetSelector::exact(lock_id.clone()),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            }),
+        );
+
+        let decision = runtime.execute(HomeCommand::new(
+            CommandOrigin::Voice,
+            HomeAction {
+                target: TargetSelector::exact(scene_id),
+                kind: HomeActionKind::ActivateScene,
+                value: None,
+            },
+        ));
+
+        assert_eq!(decision.reason, SafetyReason::SceneActionBlocked);
+        assert_eq!(
+            runtime.graph().get(&lock_id).unwrap().state,
+            EntityState::Locked
         );
     }
 }

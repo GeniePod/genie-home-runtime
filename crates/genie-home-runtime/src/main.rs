@@ -21,6 +21,7 @@ fn main() -> Result<()> {
         "status" => print_status()?,
         "demo" => run_demo()?,
         "entities" => list_entities()?,
+        "scenes" => list_scenes()?,
         "evaluate" => handle_json_request(false)?,
         "execute" => handle_json_request(true)?,
         "connectivity-demo" => print_connectivity_demo()?,
@@ -74,6 +75,7 @@ COMMANDS:
     status    Print demo runtime status
     demo      Run an in-memory safety/action demo
     entities  Print demo entity graph
+    scenes    Print demo scenes
     evaluate  Read a HomeCommand JSON from stdin and evaluate without executing
     execute   Read a HomeCommand JSON from stdin and execute if allowed
     connectivity-demo  Print a sample GenieOS connectivity report request
@@ -101,6 +103,12 @@ fn run_demo() -> Result<()> {
 fn list_entities() -> Result<()> {
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::ListEntities);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn list_scenes() -> Result<()> {
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::ListScenes);
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
@@ -476,7 +484,7 @@ mod tests {
         let bundle = build_support_bundle(&audit_path, &db_path).unwrap();
 
         assert_eq!(bundle["schema"], "genie.home.support_bundle.v1");
-        assert_eq!(bundle["counts"]["entities"], 2);
+        assert_eq!(bundle["counts"]["entities"], 3);
         assert_eq!(bundle["counts"]["audit_entries"], 1);
         assert_eq!(bundle["recent_audit"].as_array().unwrap().len(), 1);
         let _ = std::fs::remove_file(db_path);

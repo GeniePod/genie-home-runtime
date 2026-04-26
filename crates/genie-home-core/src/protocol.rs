@@ -1,6 +1,6 @@
 use crate::{
     AuditEntry, ConnectivityApplyResult, ConnectivityReport, Entity, HomeCommand, RuntimeStatus,
-    SafetyDecision,
+    SafetyDecision, Scene,
 };
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +10,7 @@ pub enum RuntimeRequest {
     Status,
     ListEntities,
     Audit { limit: Option<usize> },
+    ListScenes,
     Evaluate { command: HomeCommand },
     Execute { command: HomeCommand },
     ApplyConnectivityReport { report: ConnectivityReport },
@@ -28,6 +29,7 @@ pub enum RuntimeResponse {
     Status { status: RuntimeStatus },
     Entities { entities: Vec<EntitySnapshot> },
     Audit { entries: Vec<AuditEntry> },
+    Scenes { scenes: Vec<Scene> },
     Command { result: CommandResponse },
     ConnectivityApplied { result: ConnectivityApplyResult },
     Error { error: String },

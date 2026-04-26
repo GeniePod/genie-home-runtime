@@ -31,6 +31,8 @@ pub enum SafetyReason {
     UnsupportedCapability,
     ConfirmationRequired,
     CriticalActionBlocked,
+    SceneDefinitionMissing,
+    SceneActionBlocked,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

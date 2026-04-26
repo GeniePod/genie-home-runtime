@@ -12,6 +12,7 @@ pub mod migration;
 pub mod protocol;
 pub mod runtime;
 pub mod safety;
+pub mod scene;
 
 pub use command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
 pub use connectivity::{
@@ -31,3 +32,4 @@ pub use runtime::{
     AuditEntry, HomeRuntime, RuntimeStatus, demo_runtime, demo_turn_on_kitchen_command,
 };
 pub use safety::{SafetyDecision, SafetyPolicy, SafetyReason};
+pub use scene::Scene;

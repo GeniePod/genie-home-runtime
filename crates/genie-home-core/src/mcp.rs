@@ -40,6 +40,11 @@ pub fn default_mcp_surface() -> McpSurface {
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
+                "home.list_scenes",
+                "Return registered scene definitions.",
+                serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+            ),
+            tool(
                 "home.evaluate",
                 "Evaluate whether a physical home command is allowed without executing it.",
                 serde_json::json!({
@@ -84,6 +89,11 @@ pub fn default_mcp_surface() -> McpSurface {
                 "genie-home://entities",
                 "entities",
                 "Current Genie Home Runtime entity graph snapshot.",
+            ),
+            resource(
+                "genie-home://scenes",
+                "scenes",
+                "Registered Genie Home Runtime scene definitions.",
             ),
             resource(
                 "genie-home://audit/recent",

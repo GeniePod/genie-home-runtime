@@ -45,6 +45,7 @@ This is the initial alpha scaffold.
 Implemented now:
 
 - core entity graph model
+- basic scene model with nested action safety checks
 - command and action model
 - deterministic safety policy
 - in-memory runtime state
@@ -101,6 +102,7 @@ cargo test --workspace
 cargo run -p genie-home-runtime -- status
 cargo run -p genie-home-runtime -- demo
 cargo run -p genie-home-runtime -- entities
+cargo run -p genie-home-runtime -- scenes
 echo '{"origin":"voice","action":{"target":{"entity_id":"light.kitchen","confidence":1.0},"kind":"turn_on","value":null},"confirmed":false,"reason":null}' \
   | cargo run -p genie-home-runtime -- evaluate
 ```

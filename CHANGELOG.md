@@ -27,5 +27,6 @@ Initial scaffold for Genie Home Runtime.
 - GenieOS connectivity report contract and runtime application path for
   discovered devices.
 - MCP-facing tool/resource manifest for the upper `genie-claw` agent layer.
+- Basic scene model with nested action safety evaluation before scene execution.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

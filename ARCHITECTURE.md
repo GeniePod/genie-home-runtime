@@ -90,6 +90,7 @@ The first stable boundary is JSON-shaped and intentionally small:
 
 - `status`: runtime health and safety policy summary
 - `list_entities`: current entity snapshots
+- `list_scenes`: registered scene definitions
 - `audit`: recent runtime decisions
 - `evaluate`: return a safety decision without mutating state
 - `execute`: apply the command only if the deterministic safety policy allows it
@@ -153,6 +154,11 @@ entities and still owns safety checks for later actuation.
 The first MCP-facing surface is a manifest of tools and resources, not a full
 server. This keeps the tool names stable for `genie-claw` while the lower local
 socket API remains the only execution path for physical actions.
+
+Scenes are modeled as registered action groups. Scene activation still passes
+through the safety layer, and every nested scene action is evaluated before any
+state mutation is applied. A scene cannot be used to bypass lock, cover, HVAC,
+or other sensitive action checks.
 
 ## Next Alpha Targets
 
