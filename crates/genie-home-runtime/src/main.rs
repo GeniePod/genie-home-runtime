@@ -1,8 +1,8 @@
 use anyhow::Result;
 use genie_home_core::{
     AuditEntry, ConnectivityReport, Entity, RuntimeRequest, RuntimeResponse,
-    build_home_assistant_migration_report, demo_runtime, demo_turn_on_kitchen_command,
-    parse_home_assistant_entities_json,
+    build_home_assistant_migration_report, default_mcp_surface, demo_runtime,
+    demo_turn_on_kitchen_command, parse_home_assistant_entities_json,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -25,6 +25,7 @@ fn main() -> Result<()> {
         "execute" => handle_json_request(true)?,
         "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
+        "mcp-manifest" => print_mcp_manifest()?,
         "support-bundle" => print_support_bundle(
             args.get(2)
                 .map(String::as_str)
@@ -77,6 +78,7 @@ COMMANDS:
     execute   Read a HomeCommand JSON from stdin and execute if allowed
     connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
+    mcp-manifest  Print the local MCP-facing tool/resource manifest
     support-bundle  Print local JSON diagnostics for support
     serve     Serve RuntimeRequest JSON over a Unix socket
     request   Send RuntimeRequest JSON from stdin to a Unix socket
@@ -132,6 +134,10 @@ fn print_connectivity_demo() -> Result<()> {
     let report = ConnectivityReport::esp32c6_thread_demo()?;
     let request = RuntimeRequest::ApplyConnectivityReport { report };
     print_stdout_line(&serde_json::to_string_pretty(&request)?)
+}
+
+fn print_mcp_manifest() -> Result<()> {
+    print_stdout_line(&serde_json::to_string_pretty(&default_mcp_surface())?)
 }
 
 fn read_path_or_stdin(path: Option<&str>) -> Result<String> {
@@ -505,5 +511,13 @@ mod tests {
         };
 
         assert!(response_persists_entities(&response));
+    }
+
+    #[test]
+    fn mcp_manifest_has_home_tools() {
+        let surface = default_mcp_surface();
+
+        assert!(surface.tools.iter().any(|tool| tool.name == "home.status"));
+        assert!(surface.tools.iter().any(|tool| tool.name == "home.execute"));
     }
 }

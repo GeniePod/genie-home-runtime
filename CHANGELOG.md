@@ -26,5 +26,6 @@ Initial scaffold for Genie Home Runtime.
   permanent bridge dependency.
 - GenieOS connectivity report contract and runtime application path for
   discovered devices.
+- MCP-facing tool/resource manifest for the upper `genie-claw` agent layer.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

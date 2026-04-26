@@ -150,7 +150,11 @@ publish discovered Matter, Thread, Zigbee, BLE, Wi-Fi, UART, or ESP32-C6-backed
 devices through `apply_connectivity_report`; the runtime translates those into
 entities and still owns safety checks for later actuation.
 
+The first MCP-facing surface is a manifest of tools and resources, not a full
+server. This keeps the tool names stable for `genie-claw` while the lower local
+socket API remains the only execution path for physical actions.
+
 ## Next Alpha Targets
 
-- initial MCP tool/resource surface
+- local MCP server transport
 - support-bundle integration with `genie-ctl`

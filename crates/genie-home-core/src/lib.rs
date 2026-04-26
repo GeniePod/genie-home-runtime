@@ -7,6 +7,7 @@
 pub mod command;
 pub mod connectivity;
 pub mod entity;
+pub mod mcp;
 pub mod migration;
 pub mod protocol;
 pub mod runtime;
@@ -18,6 +19,7 @@ pub use connectivity::{
     ConnectivityReport,
 };
 pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
+pub use mcp::{McpResourceSpec, McpSurface, McpToolSpec, default_mcp_surface};
 pub use migration::{
     HomeAssistantEntityRecord, MigrationCandidate, MigrationCompatibility, MigrationCounts,
     MigrationReport, build_home_assistant_migration_report, parse_home_assistant_entities_json,
