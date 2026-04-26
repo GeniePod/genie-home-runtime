@@ -5,6 +5,7 @@ use serde_json::Value;
 pub struct McpToolSpec {
     pub name: String,
     pub description: String,
+    pub required_permissions: Vec<McpPermission>,
     pub input_schema: Value,
 }
 
@@ -13,7 +14,20 @@ pub struct McpResourceSpec {
     pub uri: String,
     pub name: String,
     pub description: String,
+    pub required_permissions: Vec<McpPermission>,
     pub mime_type: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpPermission {
+    HomeRead,
+    HomeEvaluate,
+    HomeActuate,
+    HomeAuditRead,
+    ConnectivityWrite,
+    AutomationRun,
+    SupportRead,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -32,26 +46,31 @@ pub fn default_mcp_surface() -> McpSurface {
             tool(
                 "home.status",
                 "Return runtime health, entity count, audit count, and safety policy summary.",
+                vec![McpPermission::HomeRead],
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
                 "home.list_entities",
                 "Return current home entity snapshots.",
+                vec![McpPermission::HomeRead],
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
                 "home.list_scenes",
                 "Return registered scene definitions.",
+                vec![McpPermission::HomeRead],
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
                 "home.list_automations",
                 "Return registered automation definitions.",
+                vec![McpPermission::HomeRead],
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
                 "home.evaluate",
                 "Evaluate whether a physical home command is allowed without executing it.",
+                vec![McpPermission::HomeEvaluate],
                 serde_json::json!({
                     "type": "object",
                     "required": ["command"],
@@ -62,6 +81,7 @@ pub fn default_mcp_surface() -> McpSurface {
             tool(
                 "home.execute",
                 "Execute a physical home command only if the deterministic runtime safety policy allows it.",
+                vec![McpPermission::HomeActuate],
                 serde_json::json!({
                     "type": "object",
                     "required": ["command"],
@@ -72,6 +92,7 @@ pub fn default_mcp_surface() -> McpSurface {
             tool(
                 "home.audit",
                 "Return recent runtime safety and actuation decisions.",
+                vec![McpPermission::HomeAuditRead],
                 serde_json::json!({
                     "type": "object",
                     "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200}},
@@ -81,6 +102,7 @@ pub fn default_mcp_surface() -> McpSurface {
             tool(
                 "home.apply_connectivity_report",
                 "Apply a GenieOS connectivity report for discovered devices.",
+                vec![McpPermission::ConnectivityWrite],
                 serde_json::json!({
                     "type": "object",
                     "required": ["report"],
@@ -91,6 +113,7 @@ pub fn default_mcp_surface() -> McpSurface {
             tool(
                 "home.run_automation_tick",
                 "Run local automation evaluation for a scheduler HH:MM tick.",
+                vec![McpPermission::AutomationRun],
                 serde_json::json!({
                     "type": "object",
                     "required": ["now_hh_mm"],
@@ -104,44 +127,61 @@ pub fn default_mcp_surface() -> McpSurface {
                 "genie-home://entities",
                 "entities",
                 "Current Genie Home Runtime entity graph snapshot.",
+                vec![McpPermission::HomeRead],
             ),
             resource(
                 "genie-home://scenes",
                 "scenes",
                 "Registered Genie Home Runtime scene definitions.",
+                vec![McpPermission::HomeRead],
             ),
             resource(
                 "genie-home://automations",
                 "automations",
                 "Registered Genie Home Runtime automation definitions.",
+                vec![McpPermission::HomeRead],
             ),
             resource(
                 "genie-home://audit/recent",
                 "recent_audit",
                 "Recent physical-command safety decisions.",
+                vec![McpPermission::HomeAuditRead],
             ),
             resource(
                 "genie-home://support-bundle",
                 "support_bundle",
                 "Local support diagnostics generated from persisted runtime files.",
+                vec![McpPermission::SupportRead],
             ),
         ],
     }
 }
 
-fn tool(name: &str, description: &str, input_schema: Value) -> McpToolSpec {
+fn tool(
+    name: &str,
+    description: &str,
+    required_permissions: Vec<McpPermission>,
+    input_schema: Value,
+) -> McpToolSpec {
     McpToolSpec {
         name: name.into(),
         description: description.into(),
+        required_permissions,
         input_schema,
     }
 }
 
-fn resource(uri: &str, name: &str, description: &str) -> McpResourceSpec {
+fn resource(
+    uri: &str,
+    name: &str,
+    description: &str,
+    required_permissions: Vec<McpPermission>,
+) -> McpResourceSpec {
     McpResourceSpec {
         uri: uri.into(),
         name: name.into(),
         description: description.into(),
+        required_permissions,
         mime_type: "application/json".into(),
     }
 }
@@ -160,12 +200,20 @@ mod tests {
                 .iter()
                 .any(|tool| tool.name == "home.evaluate")
         );
-        assert!(surface.tools.iter().any(|tool| tool.name == "home.execute"));
-        assert!(
-            surface
-                .resources
-                .iter()
-                .any(|resource| resource.uri == "genie-home://audit/recent")
+        let execute = surface
+            .tools
+            .iter()
+            .find(|tool| tool.name == "home.execute")
+            .unwrap();
+        assert_eq!(
+            execute.required_permissions,
+            vec![McpPermission::HomeActuate]
         );
+        assert!(surface.resources.iter().any(|resource| {
+            resource.uri == "genie-home://audit/recent"
+                && resource
+                    .required_permissions
+                    .contains(&McpPermission::HomeAuditRead)
+        }));
     }
 }

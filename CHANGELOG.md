@@ -32,5 +32,7 @@ Initial scaffold for Genie Home Runtime.
   safety evaluation.
 - Sensitive unlock/open actions now require confirmation for automation,
   schedule, bridge, local API, voice, and agent origins.
+- MCP-facing manifest now labels tools and resources with required permission
+  classes.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

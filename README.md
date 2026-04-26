@@ -58,7 +58,7 @@ Implemented now:
 - local JSON support bundle for field diagnostics
 - Home Assistant states compatibility report for migration planning
 - GenieOS connectivity report contract for discovered devices
-- MCP-facing tool/resource manifest for `genie-claw`
+- MCP-facing tool/resource manifest with permission labels for `genie-claw`
 - reference systemd packaging for a production local socket service
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
