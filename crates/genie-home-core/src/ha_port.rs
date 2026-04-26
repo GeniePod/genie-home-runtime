@@ -121,7 +121,7 @@ mod tests {
         let hardware = MockHardwareBus::reference_home();
         let states = mock_hardware_to_home_assistant_states(&hardware);
 
-        assert_eq!(states.len(), 4);
+        assert_eq!(states.len(), 7);
         assert!(states.iter().any(|state| {
             state.entity_id == "light.mock_thread_lamp"
                 && state.attributes["genie_protocol"] == "thread"
@@ -136,12 +136,12 @@ mod tests {
     fn mock_home_assistant_port_imports_all_mappable_devices() {
         let result = run_mock_home_assistant_port();
 
-        assert_eq!(result.migration_report.counts.total, 4);
-        assert_eq!(result.migration_report.counts.mappable, 4);
+        assert_eq!(result.migration_report.counts.total, 7);
+        assert_eq!(result.migration_report.counts.mappable, 7);
         assert_eq!(result.import_plan.skipped.len(), 0);
-        assert_eq!(result.import_plan.report.devices.len(), 4);
-        assert_eq!(result.runtime_status.entity_count, 4);
-        assert_eq!(result.runtime_status.device_count, 4);
+        assert_eq!(result.import_plan.report.devices.len(), 7);
+        assert_eq!(result.runtime_status.entity_count, 7);
+        assert_eq!(result.runtime_status.device_count, 7);
         assert!(result.validation.ok);
         assert!(result.import_plan.report.devices.iter().any(|device| {
             device.stable_id == "mock-thread-lamp-1"

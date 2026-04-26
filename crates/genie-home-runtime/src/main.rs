@@ -1002,7 +1002,7 @@ mod tests {
         let input = r#"[
             {"entity_id":"light.kitchen","state":"on","attributes":{"friendly_name":"Kitchen Light"}},
             {"entity_id":"climate.hallway","state":"70","attributes":{}},
-            {"entity_id":"vacuum.robot","state":"docked","attributes":{}}
+            {"entity_id":"camera.driveway","state":"streaming","attributes":{}}
         ]"#;
 
         let records = parse_home_assistant_entities_json(input).unwrap();

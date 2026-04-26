@@ -63,6 +63,9 @@ pub enum Capability {
     OpenClose,
     SceneActivation,
     SensorRead,
+    MediaPlayback,
+    VacuumControl,
+    AlarmControl,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

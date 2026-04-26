@@ -609,6 +609,11 @@ impl HomeRuntime {
             HomeActionKind::Unlock => EntityState::Unlocked,
             HomeActionKind::Open => EntityState::Open,
             HomeActionKind::Close => EntityState::Closed,
+            HomeActionKind::Start => EntityState::On,
+            HomeActionKind::Stop | HomeActionKind::Pause => EntityState::Off,
+            HomeActionKind::ReturnToBase => EntityState::Text("returning".into()),
+            HomeActionKind::Arm => EntityState::Text("armed".into()),
+            HomeActionKind::Disarm => EntityState::Text("disarmed".into()),
             HomeActionKind::Toggle => match &current.state {
                 EntityState::On => EntityState::Off,
                 EntityState::Off => EntityState::On,

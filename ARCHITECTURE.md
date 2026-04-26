@@ -195,7 +195,8 @@ The mock hardware layer also feeds Home Assistant porting work. The
 runs the compatibility report and import-plan code, applies the import to a
 fresh Genie runtime, and validates the resulting graph. This creates a repeatable
 test loop for porting HA domains without requiring real radios or a live Home
-Assistant instance.
+Assistant instance. The current harness covers lights, locks, binary sensors,
+numeric sensors, media players, vacuums, and alarm panels.
 
 The runtime exposes a hardware inventory API so upper layers can be truthful
 about support. UART and ESP32-C6 are runtime-boundary ready because the runtime
@@ -229,10 +230,11 @@ manually create an internal scene entity first.
 
 Domain services mirror the parts of Home Assistant that are useful for
 migration and user familiarity: `light.turn_on`, `lock.unlock`,
-`cover.open_cover`, `scene.turn_on`, and similar calls. They are translated into
-Genie `HomeCommand`s and then evaluated by the same safety layer. A multi-target
-service call is all-or-nothing; if any target is blocked, none of the targets
-are mutated.
+`cover.open_cover`, `scene.turn_on`, `media_player.media_play`,
+`vacuum.return_to_base`, `alarm_control_panel.alarm_disarm`, and similar calls.
+They are translated into Genie `HomeCommand`s and then evaluated by the same
+safety layer. A multi-target service call is all-or-nothing; if any target is
+blocked, none of the targets are mutated.
 
 The domain support matrix is intentionally explicit. It distinguishes domains
 with safety-gated actuation from read-only state domains and planned domains

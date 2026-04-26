@@ -51,6 +51,8 @@ Implemented now:
 - validated scene and automation configuration APIs
 - Home Assistant-style domain service catalog and safety-gated service calls
 - home domain support matrix for implemented, read-only, and planned domains
+- expanded HA-style domain coverage for media players, vacuums, alarm panels,
+  fan percentage, switch/fan toggles, and cover stop
 - hardware/protocol inventory that explicitly separates runtime support from
   GenieOS driver requirements
 - Home Assistant-style runtime event log for state/service/connectivity/automation events
@@ -71,7 +73,7 @@ Implemented now:
 - GenieOS connectivity report contract for discovered devices
 - MCP-facing tool/resource manifest with permission labels for `genie-claw`
 - deterministic mock hardware simulator with Thread, Matter, Zigbee, and BLE
-  reference devices for hardware-free tests
+  reference devices plus media/vacuum/alarm devices for hardware-free tests
 - mock Home Assistant porting harness that converts simulated hardware to
   HA-style states, runs migration/import, and validates the Genie runtime graph
 - reference systemd packaging for a production local socket service

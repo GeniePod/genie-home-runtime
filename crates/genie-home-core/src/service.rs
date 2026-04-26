@@ -104,8 +104,21 @@ pub fn service_specs() -> Vec<ServiceSpec> {
             "Turn off a switch",
             HomeActionKind::TurnOff,
         ),
+        spec(
+            "switch",
+            "toggle",
+            "Toggle a switch",
+            HomeActionKind::Toggle,
+        ),
         spec("fan", "turn_on", "Turn on a fan", HomeActionKind::TurnOn),
         spec("fan", "turn_off", "Turn off a fan", HomeActionKind::TurnOff),
+        spec("fan", "toggle", "Toggle a fan", HomeActionKind::Toggle),
+        spec(
+            "fan",
+            "set_percentage",
+            "Set fan percentage",
+            HomeActionKind::SetValue,
+        ),
         spec("lock", "lock", "Lock a lock entity", HomeActionKind::Lock),
         spec(
             "lock",
@@ -126,6 +139,12 @@ pub fn service_specs() -> Vec<ServiceSpec> {
             HomeActionKind::Close,
         ),
         spec(
+            "cover",
+            "stop_cover",
+            "Stop a cover entity",
+            HomeActionKind::Stop,
+        ),
+        spec(
             "scene",
             "turn_on",
             "Activate a scene",
@@ -136,6 +155,68 @@ pub fn service_specs() -> Vec<ServiceSpec> {
             "set_temperature",
             "Set a climate target temperature",
             HomeActionKind::SetValue,
+        ),
+        spec(
+            "media_player",
+            "turn_on",
+            "Turn on a media player",
+            HomeActionKind::TurnOn,
+        ),
+        spec(
+            "media_player",
+            "turn_off",
+            "Turn off a media player",
+            HomeActionKind::TurnOff,
+        ),
+        spec(
+            "media_player",
+            "media_play",
+            "Start media playback",
+            HomeActionKind::Start,
+        ),
+        spec(
+            "media_player",
+            "media_pause",
+            "Pause media playback",
+            HomeActionKind::Pause,
+        ),
+        spec(
+            "media_player",
+            "media_stop",
+            "Stop media playback",
+            HomeActionKind::Stop,
+        ),
+        spec(
+            "media_player",
+            "volume_set",
+            "Set media player volume",
+            HomeActionKind::SetValue,
+        ),
+        spec("vacuum", "start", "Start a vacuum", HomeActionKind::Start),
+        spec("vacuum", "stop", "Stop a vacuum", HomeActionKind::Stop),
+        spec(
+            "vacuum",
+            "return_to_base",
+            "Return a vacuum to base",
+            HomeActionKind::ReturnToBase,
+        ),
+        spec(
+            "alarm_control_panel",
+            "alarm_arm_home",
+            "Arm alarm in home mode",
+            HomeActionKind::Arm,
+        ),
+        spec(
+            "alarm_control_panel",
+            "alarm_arm_away",
+            "Arm alarm in away mode",
+            HomeActionKind::Arm,
+        ),
+        spec(
+            "alarm_control_panel",
+            "alarm_disarm",
+            "Disarm alarm",
+            HomeActionKind::Disarm,
         ),
     ]
 }
@@ -167,21 +248,6 @@ pub fn domain_support_matrix() -> Vec<DomainSupport> {
             DomainSupportLevel::ReadOnlyViaEntityState,
             "Binary sensors are represented as state snapshots. Direct actuation is intentionally unavailable.",
         ),
-        planned_domain(
-            "media_player",
-            DomainSupportLevel::Planned,
-            "Media control is planned after volume, playback, and source safety policies are defined.",
-        ),
-        planned_domain(
-            "vacuum",
-            DomainSupportLevel::Planned,
-            "Vacuum control is planned after room targeting, dock safety, and obstacle policy are defined.",
-        ),
-        planned_domain(
-            "alarm_control_panel",
-            DomainSupportLevel::Planned,
-            "Alarm control requires explicit household security policy and is not implemented in this runtime alpha.",
-        ),
     ]);
     supported.sort_by(|left, right| left.domain.cmp(&right.domain));
     supported
@@ -205,6 +271,15 @@ fn domain_notes(domain: &str) -> Vec<String> {
         }
         "scene" => {
             vec!["Scene activation evaluates every nested action before any mutation.".into()]
+        }
+        "media_player" => {
+            vec!["Media control is supported for basic power/playback/volume only.".into()]
+        }
+        "vacuum" => {
+            vec!["Vacuum movement commands are sensitive and require confirmation for unsafe origins.".into()]
+        }
+        "alarm_control_panel" => {
+            vec!["Alarm arm/disarm commands are sensitive and require confirmation for unsafe origins.".into()]
         }
         _ => {
             vec!["Direct service calls are translated into Genie commands and safety-gated.".into()]
@@ -274,12 +349,25 @@ fn service_to_action(domain: &str, service: &str) -> Option<HomeActionKind> {
         ("light" | "switch" | "fan", "turn_on") => Some(HomeActionKind::TurnOn),
         ("light" | "switch" | "fan", "turn_off") => Some(HomeActionKind::TurnOff),
         ("light" | "switch" | "fan", "toggle") => Some(HomeActionKind::Toggle),
+        ("fan", "set_percentage") => Some(HomeActionKind::SetValue),
         ("lock", "lock") => Some(HomeActionKind::Lock),
         ("lock", "unlock") => Some(HomeActionKind::Unlock),
         ("cover", "open_cover") => Some(HomeActionKind::Open),
         ("cover", "close_cover") => Some(HomeActionKind::Close),
+        ("cover", "stop_cover") => Some(HomeActionKind::Stop),
         ("scene", "turn_on") => Some(HomeActionKind::ActivateScene),
         ("climate", "set_temperature") => Some(HomeActionKind::SetValue),
+        ("media_player", "turn_on") => Some(HomeActionKind::TurnOn),
+        ("media_player", "turn_off") => Some(HomeActionKind::TurnOff),
+        ("media_player", "media_play") => Some(HomeActionKind::Start),
+        ("media_player", "media_pause") => Some(HomeActionKind::Pause),
+        ("media_player", "media_stop") => Some(HomeActionKind::Stop),
+        ("media_player", "volume_set") => Some(HomeActionKind::SetValue),
+        ("vacuum", "start") => Some(HomeActionKind::Start),
+        ("vacuum", "stop") => Some(HomeActionKind::Stop),
+        ("vacuum", "return_to_base") => Some(HomeActionKind::ReturnToBase),
+        ("alarm_control_panel", "alarm_arm_home" | "alarm_arm_away") => Some(HomeActionKind::Arm),
+        ("alarm_control_panel", "alarm_disarm") => Some(HomeActionKind::Disarm),
         _ => None,
     }
 }
@@ -291,6 +379,11 @@ fn service_value(
 ) -> Option<serde_json::Value> {
     match (domain, service) {
         ("climate", "set_temperature") => data.get("temperature").cloned(),
+        ("fan", "set_percentage") => data.get("percentage").cloned(),
+        ("media_player", "volume_set") => data.get("volume_level").cloned(),
+        ("alarm_control_panel", "alarm_arm_home" | "alarm_arm_away" | "alarm_disarm") => {
+            data.get("code").cloned()
+        }
         ("light", "turn_on") => {
             if data.is_object() && !data.as_object().unwrap().is_empty() {
                 Some(data.clone())
@@ -372,7 +465,60 @@ mod tests {
             DomainSupportLevel::SafetyGatedActuation
         );
         assert!(light.services.contains(&"turn_on".into()));
-        assert_eq!(alarm.support_level, DomainSupportLevel::Planned);
-        assert!(alarm.services.is_empty());
+        assert_eq!(
+            alarm.support_level,
+            DomainSupportLevel::SafetyGatedActuation
+        );
+        assert!(alarm.services.contains(&"alarm_disarm".into()));
+    }
+
+    #[test]
+    fn translates_media_and_vacuum_services() {
+        let media_id = EntityId::new("media_player.living_room").unwrap();
+        let vacuum_id = EntityId::new("vacuum.robot").unwrap();
+        let mut graph = EntityGraph::default();
+        graph.upsert(
+            Entity::new(media_id.clone(), "Living Room Media")
+                .with_state(EntityState::Off)
+                .with_capability(Capability::Power)
+                .with_capability(Capability::MediaPlayback),
+        );
+        graph.upsert(
+            Entity::new(vacuum_id.clone(), "Robot Vacuum")
+                .with_state(EntityState::Off)
+                .with_capability(Capability::VacuumControl),
+        );
+
+        let media = service_call_to_commands(
+            &graph,
+            &ServiceCall {
+                domain: "media_player".into(),
+                service: "media_play".into(),
+                target: ServiceTarget {
+                    entity_ids: vec![media_id],
+                },
+                data: serde_json::Value::Null,
+                origin: CommandOrigin::LocalApi,
+                confirmed: false,
+            },
+        )
+        .unwrap();
+        let vacuum = service_call_to_commands(
+            &graph,
+            &ServiceCall {
+                domain: "vacuum".into(),
+                service: "return_to_base".into(),
+                target: ServiceTarget {
+                    entity_ids: vec![vacuum_id],
+                },
+                data: serde_json::Value::Null,
+                origin: CommandOrigin::LocalApi,
+                confirmed: true,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(media[0].action.kind, HomeActionKind::Start);
+        assert_eq!(vacuum[0].action.kind, HomeActionKind::ReturnToBase);
     }
 }

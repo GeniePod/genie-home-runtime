@@ -24,12 +24,21 @@ pub enum HomeActionKind {
     Unlock,
     Open,
     Close,
+    Start,
+    Stop,
+    Pause,
+    ReturnToBase,
+    Arm,
+    Disarm,
     ActivateScene,
 }
 
 impl HomeActionKind {
     pub fn is_sensitive(&self) -> bool {
-        matches!(self, Self::Unlock | Self::Open)
+        matches!(
+            self,
+            Self::Unlock | Self::Open | Self::Start | Self::ReturnToBase | Self::Arm | Self::Disarm
+        )
     }
 
     pub fn is_physical_mutation(&self) -> bool {

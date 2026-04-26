@@ -236,13 +236,31 @@ fn classify_domain(
             notes.push("HVAC control requires policy review before actuation".into());
             MigrationCompatibility::ManualReview
         }
+        "media_player" => {
+            capabilities.insert(Capability::Power);
+            capabilities.insert(Capability::MediaPlayback);
+            notes.push("basic media power/playback/volume controls are safety-gated".into());
+            MigrationCompatibility::Mappable
+        }
+        "vacuum" => {
+            capabilities.insert(Capability::VacuumControl);
+            notes.push("robot movement commands require confirmation for unsafe origins".into());
+            MigrationCompatibility::Mappable
+        }
+        "alarm_control_panel" => {
+            capabilities.insert(Capability::AlarmControl);
+            notes.push("alarm arm/disarm commands require explicit confirmation".into());
+            MigrationCompatibility::Mappable
+        }
         _ => {
             notes.push("domain is not mapped by the initial Genie compatibility table".into());
             MigrationCompatibility::Unsupported
         }
     };
     let safety_class = match domain {
-        "lock" | "cover" | "garage_door" | "climate" => SafetyClass::Sensitive,
+        "lock" | "cover" | "garage_door" | "climate" | "vacuum" | "alarm_control_panel" => {
+            SafetyClass::Sensitive
+        }
         _ => SafetyClass::Normal,
     };
     (compatibility, capabilities, safety_class, notes)
@@ -332,8 +350,8 @@ mod tests {
     #[test]
     fn unsupported_domains_are_reported_not_imported() {
         let records = vec![HomeAssistantEntityRecord {
-            entity_id: "vacuum.robot".into(),
-            state: Some("docked".into()),
+            entity_id: "camera.driveway".into(),
+            state: Some("streaming".into()),
             name: None,
             attributes: BTreeMap::new(),
         }];
@@ -351,7 +369,7 @@ mod tests {
     fn builds_import_plan_for_mappable_entities() {
         let input = r#"[
             {"entity_id":"light.kitchen","state":"on","attributes":{"friendly_name":"Kitchen Light","device_id":"abc123","area_id":"kitchen","genie_protocol":"thread","manufacturer":"GeniePod","model":"Mock Lamp"}},
-            {"entity_id":"vacuum.robot","state":"docked","attributes":{}}
+            {"entity_id":"camera.driveway","state":"streaming","attributes":{}}
         ]"#;
 
         let records = parse_home_assistant_entities_json(input).unwrap();

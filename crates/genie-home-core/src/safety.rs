@@ -162,6 +162,15 @@ fn entity_supports_action(entity: &Entity, action: &HomeActionKind) -> bool {
         HomeActionKind::Open | HomeActionKind::Close => {
             entity.capabilities.contains(&Capability::OpenClose)
         }
+        HomeActionKind::Start | HomeActionKind::Stop | HomeActionKind::Pause => {
+            entity.capabilities.contains(&Capability::MediaPlayback)
+                || entity.capabilities.contains(&Capability::VacuumControl)
+                || entity.capabilities.contains(&Capability::OpenClose)
+        }
+        HomeActionKind::ReturnToBase => entity.capabilities.contains(&Capability::VacuumControl),
+        HomeActionKind::Arm | HomeActionKind::Disarm => {
+            entity.capabilities.contains(&Capability::AlarmControl)
+        }
         HomeActionKind::ActivateScene => entity.capabilities.contains(&Capability::SceneActivation),
     }
 }
@@ -238,6 +247,29 @@ mod tests {
             HomeAction {
                 target: TargetSelector::exact(id),
                 kind: HomeActionKind::Unlock,
+                value: None,
+            },
+        );
+
+        let decision = evaluate_command(&graph, &command, &SafetyPolicy::default());
+        assert!(!decision.allowed);
+        assert!(decision.requires_confirmation);
+    }
+
+    #[test]
+    fn requires_confirmation_for_alarm_disarm() {
+        let id = EntityId::new("alarm_control_panel.home").unwrap();
+        let graph = graph_with(
+            Entity::new(id.clone(), "Home Alarm")
+                .with_state(EntityState::Text("armed".into()))
+                .with_capability(Capability::AlarmControl)
+                .with_safety_class(SafetyClass::Sensitive),
+        );
+        let command = HomeCommand::new(
+            CommandOrigin::Agent,
+            HomeAction {
+                target: TargetSelector::exact(id),
+                kind: HomeActionKind::Disarm,
                 value: None,
             },
         );

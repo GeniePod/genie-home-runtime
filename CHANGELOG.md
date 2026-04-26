@@ -56,3 +56,5 @@ Initial scaffold for Genie Home Runtime.
 - Mock Home Assistant porting harness that converts simulated devices to
   HA-style states, runs migration/import planning, and validates the imported
   runtime graph.
+- Expanded HA-style service/domain coverage for media players, vacuums, alarm
+  panels, fan percentage, switch/fan toggles, and cover stop.

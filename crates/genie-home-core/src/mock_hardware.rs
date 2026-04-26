@@ -109,6 +109,50 @@ impl MockHardwareBus {
             )
             .with_radio(-69, 76)
             .with_battery(52),
+            MockIoTEntity::new(
+                "mock-wifi-media-1",
+                ConnectivityProtocol::Wifi,
+                "GeniePod",
+                "Mock Wi-Fi Media Player",
+                EntityId::new("media_player.mock_living_room").expect("valid mock entity id"),
+                "Mock Living Room Media",
+                Some("living_room"),
+                EntityState::Off,
+                [
+                    Capability::Power,
+                    Capability::MediaPlayback,
+                    Capability::Brightness,
+                ],
+                SafetyClass::Normal,
+            )
+            .with_radio(-43, 98),
+            MockIoTEntity::new(
+                "mock-matter-vacuum-1",
+                ConnectivityProtocol::Matter,
+                "GeniePod",
+                "Mock Matter Vacuum",
+                EntityId::new("vacuum.mock_robot").expect("valid mock entity id"),
+                "Mock Robot Vacuum",
+                Some("living_room"),
+                EntityState::Off,
+                [Capability::VacuumControl],
+                SafetyClass::Sensitive,
+            )
+            .with_radio(-58, 87)
+            .with_battery(63),
+            MockIoTEntity::new(
+                "mock-matter-alarm-1",
+                ConnectivityProtocol::Matter,
+                "GeniePod",
+                "Mock Matter Alarm Panel",
+                EntityId::new("alarm_control_panel.mock_home").expect("valid mock entity id"),
+                "Mock Home Alarm",
+                Some("entry"),
+                EntityState::Text("disarmed".into()),
+                [Capability::AlarmControl],
+                SafetyClass::Sensitive,
+            )
+            .with_radio(-49, 94),
         ]
         .into_iter()
         .map(|entity| (entity.entity_id.clone(), entity))
@@ -359,6 +403,14 @@ impl MockIoTEntity {
             HomeActionKind::Open | HomeActionKind::Close => {
                 self.capabilities.contains(&Capability::OpenClose)
             }
+            HomeActionKind::Start | HomeActionKind::Stop | HomeActionKind::Pause => {
+                self.capabilities.contains(&Capability::MediaPlayback)
+                    || self.capabilities.contains(&Capability::VacuumControl)
+            }
+            HomeActionKind::ReturnToBase => self.capabilities.contains(&Capability::VacuumControl),
+            HomeActionKind::Arm | HomeActionKind::Disarm => {
+                self.capabilities.contains(&Capability::AlarmControl)
+            }
             HomeActionKind::ActivateScene => false,
         }
     }
@@ -378,6 +430,11 @@ impl MockIoTEntity {
             HomeActionKind::Unlock => self.state = EntityState::Unlocked,
             HomeActionKind::Open => self.state = EntityState::Open,
             HomeActionKind::Close => self.state = EntityState::Closed,
+            HomeActionKind::Start => self.state = EntityState::On,
+            HomeActionKind::Stop | HomeActionKind::Pause => self.state = EntityState::Off,
+            HomeActionKind::ReturnToBase => self.state = EntityState::Text("returning".into()),
+            HomeActionKind::Arm => self.state = EntityState::Text("armed".into()),
+            HomeActionKind::Disarm => self.state = EntityState::Text("disarmed".into()),
             HomeActionKind::SetValue => {
                 if let Some(value) = value {
                     self.attributes.insert("target_value".into(), value.clone());
@@ -411,7 +468,7 @@ mod tests {
         let hardware = MockHardwareBus::reference_home();
         let report = hardware.discovery_report();
 
-        assert_eq!(report.devices.len(), 4);
+        assert_eq!(report.devices.len(), 7);
         assert!(
             report
                 .devices
