@@ -140,9 +140,13 @@ and stores durable runtime files under:
 /var/lib/geniepod/
 ```
 
+Home Assistant migration support is intentionally report-first. The runtime can
+analyze an HA-style states JSON dump and classify entities as `mappable`,
+`manual_review`, or `unsupported`, but it does not become a permanent bridge or
+delegate physical safety to Home Assistant.
+
 ## Next Alpha Targets
 
-- Home Assistant migration compatibility report
 - initial MCP tool/resource surface
 - ESP32-C6 Thread/Matter capability boundary with GenieOS
 - support-bundle integration with `genie-ctl`

@@ -54,6 +54,7 @@ Implemented now:
 - SQLite entity snapshot persistence for runtime restarts
 - JSONL audit persistence for executed runtime decisions
 - local JSON support bundle for field diagnostics
+- Home Assistant states compatibility report for migration planning
 - reference systemd packaging for a production local socket service
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
@@ -131,6 +132,14 @@ Generate a local support bundle:
 cargo run -p genie-home-runtime -- support-bundle \
   /tmp/genie-home-runtime-audit.jsonl \
   /tmp/genie-home-runtime-state.sqlite3
+```
+
+Generate a Home Assistant migration compatibility report from a states JSON
+dump:
+
+```bash
+curl -s http://homeassistant.local:8123/api/states > ha-states.json
+cargo run -p genie-home-runtime -- ha-compat-report ha-states.json
 ```
 
 Production-style systemd reference files live in:

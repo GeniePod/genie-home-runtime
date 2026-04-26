@@ -1,6 +1,7 @@
 use anyhow::Result;
 use genie_home_core::{
-    AuditEntry, Entity, RuntimeRequest, RuntimeResponse, demo_runtime, demo_turn_on_kitchen_command,
+    AuditEntry, Entity, RuntimeRequest, RuntimeResponse, build_home_assistant_migration_report,
+    demo_runtime, demo_turn_on_kitchen_command, parse_home_assistant_entities_json,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -21,6 +22,7 @@ fn main() -> Result<()> {
         "entities" => list_entities()?,
         "evaluate" => handle_json_request(false)?,
         "execute" => handle_json_request(true)?,
+        "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
         "support-bundle" => print_support_bundle(
             args.get(2)
                 .map(String::as_str)
@@ -60,6 +62,7 @@ genie-home-runtime
 
 USAGE:
     genie-home-runtime <COMMAND>
+    genie-home-runtime ha-compat-report [HA_STATES_JSON|-]
     genie-home-runtime support-bundle [AUDIT_LOG] [STATE_DB]
     genie-home-runtime serve [SOCKET] [AUDIT_LOG] [STATE_DB]
     genie-home-runtime request [SOCKET]
@@ -70,6 +73,7 @@ COMMANDS:
     entities  Print demo entity graph
     evaluate  Read a HomeCommand JSON from stdin and evaluate without executing
     execute   Read a HomeCommand JSON from stdin and execute if allowed
+    ha-compat-report  Print a Home Assistant migration compatibility report
     support-bundle  Print local JSON diagnostics for support
     serve     Serve RuntimeRequest JSON over a Unix socket
     request   Send RuntimeRequest JSON from stdin to a Unix socket
@@ -112,6 +116,24 @@ fn handle_json_request(execute: bool) -> Result<()> {
 fn print_support_bundle(audit_log_path: &str, state_db_path: &str) -> Result<()> {
     let bundle = build_support_bundle(audit_log_path, state_db_path)?;
     print_stdout_line(&serde_json::to_string_pretty(&bundle)?)
+}
+
+fn print_ha_compat_report(path: Option<&str>) -> Result<()> {
+    let input = read_path_or_stdin(path)?;
+    let records = parse_home_assistant_entities_json(&input).map_err(anyhow::Error::msg)?;
+    let report = build_home_assistant_migration_report(records);
+    print_stdout_line(&serde_json::to_string_pretty(&report)?)
+}
+
+fn read_path_or_stdin(path: Option<&str>) -> Result<String> {
+    match path {
+        Some("-") | None => {
+            let mut input = String::new();
+            std::io::stdin().read_to_string(&mut input)?;
+            Ok(input)
+        }
+        Some(path) => Ok(std::fs::read_to_string(path)?),
+    }
 }
 
 fn print_stdout_line(output: &str) -> Result<()> {
@@ -439,5 +461,22 @@ mod tests {
         assert_eq!(bundle["recent_audit"].as_array().unwrap().len(), 1);
         let _ = std::fs::remove_file(db_path);
         let _ = std::fs::remove_file(audit_path);
+    }
+
+    #[test]
+    fn ha_compat_report_maps_common_domains() {
+        let input = r#"[
+            {"entity_id":"light.kitchen","state":"on","attributes":{"friendly_name":"Kitchen Light"}},
+            {"entity_id":"climate.hallway","state":"70","attributes":{}},
+            {"entity_id":"vacuum.robot","state":"docked","attributes":{}}
+        ]"#;
+
+        let records = parse_home_assistant_entities_json(input).unwrap();
+        let report = build_home_assistant_migration_report(records);
+
+        assert_eq!(report.counts.total, 3);
+        assert_eq!(report.counts.mappable, 1);
+        assert_eq!(report.counts.manual_review, 1);
+        assert_eq!(report.counts.unsupported, 1);
     }
 }

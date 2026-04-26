@@ -22,5 +22,7 @@ Initial scaffold for Genie Home Runtime.
 - Local JSON support bundle generation from persisted state and audit files.
 - Reference systemd unit and tmpfiles configuration for the local socket
   service.
+- Home Assistant states compatibility report for migration planning without a
+  permanent bridge dependency.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.
