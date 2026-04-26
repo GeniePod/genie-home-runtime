@@ -1,7 +1,7 @@
 use crate::{
     AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
     Device, Entity, HomeCommand, RuntimeEvent, RuntimeStatus, SafetyDecision, Scene, ServiceCall,
-    ServiceCallResult, ServiceSpec,
+    ServiceCallResult, ServiceSpec, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuntimeRequest {
     Status,
+    Validate,
     ListDevices,
     ListEntities,
     ListAutomations,
@@ -34,6 +35,7 @@ pub struct ExecuteCommandRequest {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuntimeResponse {
     Status { status: RuntimeStatus },
+    Validation { report: ValidationReport },
     Devices { devices: Vec<DeviceSnapshot> },
     Entities { entities: Vec<EntitySnapshot> },
     Automations { automations: Vec<Automation> },

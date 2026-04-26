@@ -38,5 +38,6 @@ Initial scaffold for Genie Home Runtime.
 - Runtime event log for state changes, service calls, connectivity reports, and
   automation ticks.
 - Device registry with entity-to-device attribution and SQLite persistence.
+- Runtime validation report for registry, scene, and automation consistency.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

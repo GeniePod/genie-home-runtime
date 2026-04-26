@@ -20,6 +20,7 @@ fn main() -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
     match args.get(1).map(String::as_str).unwrap_or("status") {
         "status" => print_status()?,
+        "validate" => validate_demo_runtime()?,
         "demo" => run_demo()?,
         "entities" => list_entities()?,
         "devices" => list_devices()?,
@@ -88,6 +89,7 @@ USAGE:
 
 COMMANDS:
     status    Print demo runtime status
+    validate  Validate demo runtime invariants
     demo      Run an in-memory safety/action demo
     devices   Print demo device registry
     entities  Print demo entity graph
@@ -112,6 +114,12 @@ COMMANDS:
 fn print_status() -> Result<()> {
     let runtime = demo_runtime();
     print_stdout_line(&serde_json::to_string_pretty(&runtime.status())?)
+}
+
+fn validate_demo_runtime() -> Result<()> {
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::Validate);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
 fn run_demo() -> Result<()> {

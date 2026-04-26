@@ -50,6 +50,7 @@ Implemented now:
 - Home Assistant-style domain service catalog and safety-gated service calls
 - Home Assistant-style runtime event log for state/service/connectivity/automation events
 - Home Assistant-style device registry with entity-to-device attribution
+- self-validation report for runtime registry and automation invariants
 - command and action model
 - deterministic safety policy
 - in-memory runtime state
@@ -104,6 +105,7 @@ git clone --depth 1 https://github.com/home-assistant/core.git reference/home-as
 ```bash
 cargo test --workspace
 cargo run -p genie-home-runtime -- status
+cargo run -p genie-home-runtime -- validate
 cargo run -p genie-home-runtime -- demo
 cargo run -p genie-home-runtime -- devices
 cargo run -p genie-home-runtime -- entities

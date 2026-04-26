@@ -91,6 +91,8 @@ permanent dependency:
 The first stable boundary is JSON-shaped and intentionally small:
 
 - `status`: runtime health and safety policy summary
+- `validate`: runtime invariant checks for devices, entities, scenes, and
+  automations
 - `list_devices`: current device registry snapshots
 - `list_entities`: current entity snapshots
 - `list_services`: supported Home Assistant-style domain services
@@ -192,6 +194,10 @@ Devices and entities are separate. A physical device may expose multiple
 entities, and entities can carry a `device_id` pointer. This matches the useful
 part of Home Assistant's registry model while keeping execution in Genie-owned
 policy and state.
+
+Validation is a first-class runtime operation. It checks registry consistency
+before field deployment: entity device references, scene backing entities,
+scene action targets, automation trigger shape, and automation action targets.
 
 ## Next Alpha Targets
 

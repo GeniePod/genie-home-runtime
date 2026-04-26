@@ -14,6 +14,7 @@ use crate::scene::Scene;
 use crate::service::{
     ServiceActionResult, ServiceCall, ServiceCallResult, service_call_to_commands, service_specs,
 };
+use crate::validation::validate_runtime;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
@@ -75,6 +76,10 @@ impl HomeRuntime {
 
     pub fn devices(&self) -> impl Iterator<Item = &Device> {
         self.devices.devices()
+    }
+
+    pub fn device(&self, id: &DeviceId) -> Option<&Device> {
+        self.devices.get(id)
     }
 
     pub fn upsert_scene(&mut self, scene: Scene) {
@@ -150,6 +155,9 @@ impl HomeRuntime {
         match request {
             RuntimeRequest::Status => RuntimeResponse::Status {
                 status: self.status(),
+            },
+            RuntimeRequest::Validate => RuntimeResponse::Validation {
+                report: validate_runtime(self),
             },
             RuntimeRequest::ListDevices => RuntimeResponse::Devices {
                 devices: self.devices().map(DeviceSnapshot::from).collect(),

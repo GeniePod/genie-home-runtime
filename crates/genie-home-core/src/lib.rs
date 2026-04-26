@@ -17,6 +17,7 @@ pub mod runtime;
 pub mod safety;
 pub mod scene;
 pub mod service;
+pub mod validation;
 
 pub use automation::{
     Automation, AutomationBlock, AutomationCondition, AutomationTickResult, AutomationTrigger,
@@ -47,3 +48,4 @@ pub use service::{
     ServiceActionResult, ServiceCall, ServiceCallError, ServiceCallResult, ServiceSpec,
     ServiceTarget, service_call_to_commands, service_specs,
 };
+pub use validation::{ValidationIssue, ValidationReport, ValidationSeverity, validate_runtime};

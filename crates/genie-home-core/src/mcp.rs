@@ -50,6 +50,12 @@ pub fn default_mcp_surface() -> McpSurface {
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
+                "home.validate",
+                "Validate runtime registry, scene, and automation invariants.",
+                vec![McpPermission::HomeRead],
+                serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+            ),
+            tool(
                 "home.list_entities",
                 "Return current home entity snapshots.",
                 vec![McpPermission::HomeRead],
