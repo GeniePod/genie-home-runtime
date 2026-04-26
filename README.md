@@ -68,6 +68,7 @@ Implemented now:
 - JSON request/response contract for status, entity listing, evaluate, and execute
 - local Unix-socket JSON API for `genie-claw` and local tools
 - SQLite registry persistence for devices, entities, scenes, and automations
+- versioned runtime snapshot export/import for backup and restore tests
 - JSONL audit persistence for executed runtime decisions
 - local JSON support bundle for field diagnostics
 - Home Assistant states compatibility report for migration planning
@@ -140,6 +141,7 @@ cargo run -p genie-home-runtime -- mock-hardware-demo
 cargo run -p genie-home-runtime -- ha-mock-port-demo
 cargo run -p genie-home-runtime -- events
 cargo run -p genie-home-runtime -- scenes
+cargo run -p genie-home-runtime -- snapshot
 cargo run -p genie-home-runtime -- automations
 cargo run -p genie-home-runtime -- automation-tick 23:00
 cargo run -p genie-home-runtime -- scheduler-window 22:58 23:01

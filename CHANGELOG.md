@@ -60,3 +60,4 @@ Initial scaffold for Genie Home Runtime.
   panels, fan percentage, switch/fan toggles, and cover stop.
 - Bounded scheduler catch-up window for deterministic missed-tick replay after
   runtime downtime or restart.
+- Versioned runtime snapshot export/import with validation before restore.

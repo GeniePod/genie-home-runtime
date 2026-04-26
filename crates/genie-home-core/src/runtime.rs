@@ -24,6 +24,7 @@ use crate::service::{
     service_call_to_commands, service_specs,
 };
 use crate::validation::validate_runtime;
+use crate::{RuntimeSnapshot, SnapshotApplyResult};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
@@ -195,6 +196,12 @@ impl HomeRuntime {
             RuntimeRequest::ListScenes => RuntimeResponse::Scenes {
                 scenes: self.scenes().cloned().collect(),
             },
+            RuntimeRequest::ExportSnapshot => RuntimeResponse::Snapshot {
+                snapshot: self.snapshot(),
+            },
+            RuntimeRequest::ImportSnapshot { snapshot } => RuntimeResponse::SnapshotApplied {
+                result: self.restore_snapshot(snapshot),
+            },
             RuntimeRequest::Evaluate { command } => {
                 let decision = self.evaluate(&command);
                 RuntimeResponse::Command {
@@ -351,6 +358,46 @@ impl HomeRuntime {
                 entities_upserted: result.entities_upserted,
             }));
         result
+    }
+
+    pub fn snapshot(&self) -> RuntimeSnapshot {
+        RuntimeSnapshot::new(
+            self.devices().cloned().collect(),
+            self.graph().entities().cloned().collect(),
+            self.scenes().cloned().collect(),
+            self.automations().cloned().collect(),
+        )
+    }
+
+    pub fn restore_snapshot(&mut self, snapshot: RuntimeSnapshot) -> SnapshotApplyResult {
+        let mut candidate = HomeRuntime::new(self.policy.clone());
+        for device in snapshot.devices {
+            candidate.upsert_device(device);
+        }
+        for entity in snapshot.entities {
+            candidate.upsert_entity(entity);
+        }
+        for scene in snapshot.scenes {
+            candidate.upsert_scene(scene);
+        }
+        for automation in snapshot.automations {
+            candidate.upsert_automation(automation);
+        }
+        let validation = validate_runtime(&candidate);
+        if validation.ok {
+            self.devices = candidate.devices;
+            self.graph = candidate.graph;
+            self.scenes = candidate.scenes;
+            self.automations = candidate.automations;
+        }
+        SnapshotApplyResult {
+            changed: validation.ok,
+            devices: self.devices.len(),
+            entities: self.graph.len(),
+            scenes: self.scenes.len(),
+            automations: self.automations.len(),
+            validation,
+        }
     }
 
     pub fn apply_state_report(&mut self, report: StateReport) -> StateApplyResult {
@@ -899,6 +946,42 @@ mod tests {
         };
         assert!(domains.iter().any(|domain| domain.domain == "light"));
         assert!(domains.iter().any(|domain| domain.domain == "sensor"));
+    }
+
+    #[test]
+    fn exports_and_restores_runtime_snapshot() {
+        let mut first = demo_runtime();
+        first.execute(demo_turn_on_kitchen_command());
+        let snapshot = first.snapshot();
+        let mut second = HomeRuntime::with_default_policy();
+
+        let result = second.restore_snapshot(snapshot);
+
+        assert!(result.changed);
+        assert!(result.validation.ok);
+        assert_eq!(second.status().device_count, 2);
+        assert_eq!(second.status().entity_count, 3);
+        assert_eq!(
+            second
+                .graph()
+                .get(&EntityId::new("light.kitchen").unwrap())
+                .unwrap()
+                .state,
+            EntityState::On
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_snapshot_without_mutating_runtime() {
+        let mut runtime = demo_runtime();
+        let mut snapshot = runtime.snapshot();
+        snapshot.scenes[0].actions[0].target.entity_id = EntityId::new("light.missing").unwrap();
+
+        let result = runtime.restore_snapshot(snapshot);
+
+        assert!(!result.changed);
+        assert!(!result.validation.ok);
+        assert_eq!(runtime.status().entity_count, 3);
     }
 
     #[test]

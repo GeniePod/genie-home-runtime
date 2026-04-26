@@ -101,6 +101,8 @@ The first stable boundary is JSON-shaped and intentionally small:
   driver requirements
 - `list_scenes`: registered scene definitions
 - `list_automations`: registered automation definitions
+- `export_snapshot` / `import_snapshot`: versioned backup/restore of devices,
+  entities, scenes, and automations
 - `audit`: recent runtime decisions
 - `events`: recent state/service/connectivity/automation events
 - `evaluate`: return a safety decision without mutating state
@@ -150,6 +152,12 @@ The runtime binary can also emit a local JSON support bundle from persisted
 state and audit files. This is intentionally a CLI path first, not a network
 endpoint, so field diagnostics do not expand the physical-control attack
 surface.
+
+Runtime snapshots are the backup/restore primitive. A snapshot includes device
+registry entries, entity graph entries, scenes, and automations. Import is
+applied to a candidate runtime and must pass validation before replacing live
+state, so rollback data cannot silently install broken scene or automation
+targets.
 
 Reference systemd packaging serves the production socket from:
 

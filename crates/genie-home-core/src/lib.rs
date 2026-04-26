@@ -21,6 +21,7 @@ pub mod safety;
 pub mod scene;
 pub mod scheduler;
 pub mod service;
+pub mod snapshot;
 pub mod validation;
 
 pub use automation::{
@@ -70,4 +71,5 @@ pub use service::{
     ServiceCallResult, ServiceSpec, ServiceTarget, domain_support_matrix, service_call_to_commands,
     service_specs,
 };
+pub use snapshot::{RuntimeSnapshot, SnapshotApplyResult};
 pub use validation::{ValidationIssue, ValidationReport, ValidationSeverity, validate_runtime};

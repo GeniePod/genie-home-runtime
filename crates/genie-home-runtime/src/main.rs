@@ -1,8 +1,8 @@
 use anyhow::Result;
 use genie_home_core::{
     AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, HardwareInterface,
-    MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse, Scene, SchedulerCatchUpPolicy,
-    SchedulerWindow, StateReport, build_home_assistant_import_plan,
+    MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse, RuntimeSnapshot, Scene,
+    SchedulerCatchUpPolicy, SchedulerWindow, StateReport, build_home_assistant_import_plan,
     build_home_assistant_migration_report, default_hardware_inventory, default_mcp_surface,
     demo_runtime, demo_turn_on_kitchen_command, domain_support_matrix,
     mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
@@ -33,6 +33,8 @@ fn main() -> Result<()> {
         "hardware" => print_hardware_inventory()?,
         "events" => list_demo_events()?,
         "scenes" => list_scenes()?,
+        "snapshot" => print_snapshot()?,
+        "restore-snapshot" => handle_restore_snapshot()?,
         "automations" => list_automations()?,
         "automation-tick" => {
             run_automation_tick(args.get(2).map(String::as_str).unwrap_or("23:00"))?
@@ -117,6 +119,8 @@ COMMANDS:
     hardware  Print runtime hardware/protocol support boundaries
     events    Print demo runtime events
     scenes    Print demo scenes
+    snapshot  Print a versioned demo runtime snapshot
+    restore-snapshot  Read a RuntimeSnapshot JSON from stdin and validate/restore it
     automations  Print demo automations
     automation-tick  Run demo automations for HH:MM
     scheduler-window  Run catch-up scheduler window FROM_HH:MM TO_HH:MM
@@ -199,6 +203,21 @@ fn list_demo_events() -> Result<()> {
 fn list_scenes() -> Result<()> {
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::ListScenes);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn print_snapshot() -> Result<()> {
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::ExportSnapshot);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn handle_restore_snapshot() -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let snapshot: RuntimeSnapshot = serde_json::from_str(&input)?;
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::ImportSnapshot { snapshot });
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
@@ -727,6 +746,7 @@ fn response_persists_entities(response: &RuntimeResponse) -> bool {
     matches!(response, RuntimeResponse::Command { result } if result.executed)
         || matches!(response, RuntimeResponse::ServiceCall { result } if result.executed > 0)
         || matches!(response, RuntimeResponse::ConfigChanged { result } if result.changed)
+        || matches!(response, RuntimeResponse::SnapshotApplied { result } if result.changed)
         || matches!(response, RuntimeResponse::ConnectivityApplied { result } if result.entities_upserted > 0)
         || matches!(response, RuntimeResponse::StateApplied { result } if result.entities_updated > 0)
         || matches!(response, RuntimeResponse::AutomationTick { result } if result.actions_executed > 0)
@@ -1097,6 +1117,25 @@ mod tests {
                 id: "automation.test".into(),
                 changed: true,
                 validation: None,
+            },
+        };
+
+        assert!(response_persists_entities(&response));
+    }
+
+    #[test]
+    fn snapshot_apply_response_triggers_state_persistence() {
+        let response = RuntimeResponse::SnapshotApplied {
+            result: genie_home_core::SnapshotApplyResult {
+                changed: true,
+                devices: 1,
+                entities: 1,
+                scenes: 0,
+                automations: 0,
+                validation: genie_home_core::ValidationReport {
+                    ok: true,
+                    issues: Vec::new(),
+                },
             },
         };
 

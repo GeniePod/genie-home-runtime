@@ -1,9 +1,9 @@
 use crate::{
     AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
     Device, DomainSupport, Entity, EntityId, HardwareInventory, HomeCommand, RuntimeEvent,
-    RuntimeStatus, SafetyDecision, Scene, SchedulerCatchUpPolicy, SchedulerRunResult,
-    SchedulerWindow, ServiceCall, ServiceCallResult, ServiceSpec, StateApplyResult, StateReport,
-    ValidationReport,
+    RuntimeSnapshot, RuntimeStatus, SafetyDecision, Scene, SchedulerCatchUpPolicy,
+    SchedulerRunResult, SchedulerWindow, ServiceCall, ServiceCallResult, ServiceSpec,
+    SnapshotApplyResult, StateApplyResult, StateReport, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +25,10 @@ pub enum RuntimeRequest {
         limit: Option<usize>,
     },
     ListScenes,
+    ExportSnapshot,
+    ImportSnapshot {
+        snapshot: RuntimeSnapshot,
+    },
     Evaluate {
         command: HomeCommand,
     },
@@ -82,6 +86,8 @@ pub enum RuntimeResponse {
     Audit { entries: Vec<AuditEntry> },
     Events { events: Vec<RuntimeEvent> },
     Scenes { scenes: Vec<Scene> },
+    Snapshot { snapshot: RuntimeSnapshot },
+    SnapshotApplied { result: SnapshotApplyResult },
     Command { result: CommandResponse },
     ServiceCall { result: ServiceCallResult },
     ConfigChanged { result: ConfigChangeResult },
