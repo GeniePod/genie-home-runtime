@@ -222,6 +222,12 @@ for physical actions. Permission labels distinguish read-only operations from
 evaluation, actuation, audit access, connectivity writes, automation runs, and
 support diagnostics.
 
+The runtime also includes a local MCP-style stdio JSON-RPC bridge. It supports
+`initialize`, `tools/list`, `resources/list`, and `tools/call`, and maps tool
+calls back to the same `RuntimeRequest` handlers used by the local socket API.
+This gives `genie-claw` a tool-transport path without exposing a LAN control
+surface.
+
 Scenes are modeled as registered action groups. Scene activation still passes
 through the safety layer, and every nested scene action is evaluated before any
 state mutation is applied. A scene cannot be used to bypass lock, cover, HVAC,

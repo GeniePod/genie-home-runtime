@@ -87,6 +87,7 @@ dependencies = [
  "anyhow",
  "genie-home-core",
  "rusqlite",
+ "serde",
  "serde_json",
  "time",
 ]

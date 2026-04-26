@@ -1,8 +1,8 @@
 use anyhow::Result;
 use genie_home_core::{
     AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, HardwareInterface,
-    MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse, RuntimeSnapshot, Scene,
-    SchedulerCatchUpPolicy, SchedulerWindow, StateReport, build_home_assistant_import_plan,
+    HomeRuntime, MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse, RuntimeSnapshot,
+    Scene, SchedulerCatchUpPolicy, SchedulerWindow, StateReport, build_home_assistant_import_plan,
     build_home_assistant_migration_report, default_hardware_inventory, default_mcp_surface,
     demo_runtime, demo_turn_on_kitchen_command, domain_support_matrix,
     mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
@@ -57,6 +57,7 @@ fn main() -> Result<()> {
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
         "ha-import-plan" => print_ha_import_plan(args.get(2).map(String::as_str))?,
         "mcp-manifest" => print_mcp_manifest()?,
+        "mcp-stdio" => serve_mcp_stdio()?,
         "support-bundle" => print_support_bundle(
             args.get(2)
                 .map(String::as_str)
@@ -138,6 +139,7 @@ COMMANDS:
     ha-compat-report  Print a Home Assistant migration compatibility report
     ha-import-plan  Print a Genie connectivity import plan from Home Assistant states
     mcp-manifest  Print the local MCP-facing tool/resource manifest
+    mcp-stdio  Serve a local JSON-RPC MCP-style stdio bridge
     support-bundle  Print local JSON diagnostics for support
     serve     Serve RuntimeRequest JSON over a Unix socket
     request   Send RuntimeRequest JSON from stdin to a Unix socket
@@ -382,6 +384,182 @@ fn print_connectivity_demo() -> Result<()> {
 
 fn print_mcp_manifest() -> Result<()> {
     print_stdout_line(&serde_json::to_string_pretty(&default_mcp_surface())?)
+}
+
+fn serve_mcp_stdio() -> Result<()> {
+    let stdin = std::io::stdin();
+    let mut runtime = demo_runtime();
+    for line in stdin.lock().lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let response = handle_mcp_stdio_message(&mut runtime, &line);
+        print_stdout_line(&serde_json::to_string(&response)?)?;
+    }
+    Ok(())
+}
+
+fn handle_mcp_stdio_message(runtime: &mut HomeRuntime, input: &str) -> serde_json::Value {
+    let Ok(request) = serde_json::from_str::<serde_json::Value>(input) else {
+        return mcp_error(serde_json::Value::Null, -32700, "parse error");
+    };
+    let id = request
+        .get("id")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let method = request
+        .get("method")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let params = request
+        .get("params")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    match method {
+        "initialize" => mcp_result(
+            id,
+            serde_json::json!({
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {
+                    "name": "genie-home-runtime",
+                    "version": env!("CARGO_PKG_VERSION")
+                },
+                "capabilities": {
+                    "tools": {},
+                    "resources": {}
+                }
+            }),
+        ),
+        "tools/list" => mcp_result(
+            id,
+            serde_json::json!({
+                "tools": default_mcp_surface().tools
+            }),
+        ),
+        "resources/list" => mcp_result(
+            id,
+            serde_json::json!({
+                "resources": default_mcp_surface().resources
+            }),
+        ),
+        "tools/call" => match mcp_tool_to_runtime_request(&params) {
+            Ok(request) => {
+                let response = runtime.handle_request(request);
+                mcp_result(
+                    id,
+                    serde_json::json!({
+                        "content": [{
+                            "type": "text",
+                            "text": serde_json::to_string(&response).unwrap_or_else(|err| {
+                                serde_json::json!({"type":"error","error":err.to_string()}).to_string()
+                            })
+                        }],
+                        "structuredContent": response
+                    }),
+                )
+            }
+            Err(err) => mcp_error(id, -32602, &err),
+        },
+        _ => mcp_error(id, -32601, "method not found"),
+    }
+}
+
+fn mcp_result(id: serde_json::Value, result: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": result
+    })
+}
+
+fn mcp_error(id: serde_json::Value, code: i64, message: &str) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": code,
+            "message": message
+        }
+    })
+}
+
+fn mcp_tool_to_runtime_request(params: &serde_json::Value) -> Result<RuntimeRequest, String> {
+    let name = params
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "tools/call requires params.name".to_string())?;
+    let arguments = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    match name {
+        "home.status" => Ok(RuntimeRequest::Status),
+        "home.validate" => Ok(RuntimeRequest::Validate),
+        "home.list_entities" => Ok(RuntimeRequest::ListEntities),
+        "home.list_devices" => Ok(RuntimeRequest::ListDevices),
+        "home.list_services" => Ok(RuntimeRequest::ListServices),
+        "home.list_domains" => Ok(RuntimeRequest::ListDomains),
+        "home.hardware_inventory" => Ok(RuntimeRequest::HardwareInventory),
+        "home.list_scenes" => Ok(RuntimeRequest::ListScenes),
+        "home.list_automations" => Ok(RuntimeRequest::ListAutomations),
+        "home.audit" => Ok(RuntimeRequest::Audit {
+            limit: arguments
+                .get("limit")
+                .and_then(serde_json::Value::as_u64)
+                .map(|value| value as usize),
+        }),
+        "home.events" => Ok(RuntimeRequest::Events {
+            limit: arguments
+                .get("limit")
+                .and_then(serde_json::Value::as_u64)
+                .map(|value| value as usize),
+        }),
+        "home.evaluate" => Ok(RuntimeRequest::Evaluate {
+            command: required_argument(arguments, "command")?,
+        }),
+        "home.execute" => Ok(RuntimeRequest::Execute {
+            command: required_argument(arguments, "command")?,
+        }),
+        "home.call_service" => Ok(RuntimeRequest::CallService {
+            call: required_argument(arguments, "call")?,
+        }),
+        "home.upsert_scene" => Ok(RuntimeRequest::UpsertScene {
+            scene: required_argument(arguments, "scene")?,
+        }),
+        "home.delete_scene" => Ok(RuntimeRequest::DeleteScene {
+            scene_id: required_argument(arguments, "scene_id")?,
+        }),
+        "home.upsert_automation" => Ok(RuntimeRequest::UpsertAutomation {
+            automation: required_argument(arguments, "automation")?,
+        }),
+        "home.delete_automation" => Ok(RuntimeRequest::DeleteAutomation {
+            automation_id: required_argument(arguments, "automation_id")?,
+        }),
+        "home.apply_connectivity_report" => Ok(RuntimeRequest::ApplyConnectivityReport {
+            report: required_argument(arguments, "report")?,
+        }),
+        "home.apply_state_report" => Ok(RuntimeRequest::ApplyStateReport {
+            report: required_argument(arguments, "report")?,
+        }),
+        "home.run_automation_tick" => Ok(RuntimeRequest::RunAutomationTick {
+            now_hh_mm: required_argument(arguments, "now_hh_mm")?,
+        }),
+        _ => Err(format!("unsupported tool: {name}")),
+    }
+}
+
+fn required_argument<T: serde::de::DeserializeOwned>(
+    arguments: serde_json::Value,
+    key: &str,
+) -> Result<T, String> {
+    let value = arguments
+        .get(key)
+        .cloned()
+        .ok_or_else(|| format!("missing required argument: {key}"))?;
+    serde_json::from_value(value).map_err(|err| format!("invalid argument {key}: {err}"))
 }
 
 fn read_path_or_stdin(path: Option<&str>) -> Result<String> {
@@ -1154,5 +1332,28 @@ mod tests {
                 .iter()
                 .any(|tool| tool.name == "home.upsert_scene")
         );
+    }
+
+    #[test]
+    fn mcp_stdio_lists_tools_and_calls_status() {
+        let mut runtime = demo_runtime();
+        let list = handle_mcp_stdio_message(
+            &mut runtime,
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"#,
+        );
+        let call = handle_mcp_stdio_message(
+            &mut runtime,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"home.status","arguments":{}}}"#,
+        );
+
+        assert_eq!(list["jsonrpc"], "2.0");
+        assert!(
+            list["result"]["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|tool| tool["name"] == "home.status")
+        );
+        assert_eq!(call["result"]["structuredContent"]["type"], "status");
     }
 }

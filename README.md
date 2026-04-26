@@ -74,6 +74,8 @@ Implemented now:
 - Home Assistant states compatibility report for migration planning
 - GenieOS connectivity report contract for discovered devices
 - MCP-facing tool/resource manifest with permission labels for `genie-claw`
+- local MCP-style stdio JSON-RPC bridge for tool/resource discovery and
+  `tools/call` execution against the runtime API
 - deterministic mock hardware simulator with Thread, Matter, Zigbee, and BLE
   reference devices plus media/vacuum/alarm devices for hardware-free tests
 - mock Home Assistant porting harness that converts simulated hardware to
@@ -196,6 +198,13 @@ Print the MCP-facing tool/resource manifest:
 
 ```bash
 cargo run -p genie-home-runtime -- mcp-manifest
+```
+
+Run the local MCP-style stdio bridge:
+
+```bash
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"home.status","arguments":{}}}' \
+  | cargo run -p genie-home-runtime -- mcp-stdio
 ```
 
 Inspect recent audit entries:

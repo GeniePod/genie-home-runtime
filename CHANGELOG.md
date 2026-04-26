@@ -61,3 +61,5 @@ Initial scaffold for Genie Home Runtime.
 - Bounded scheduler catch-up window for deterministic missed-tick replay after
   runtime downtime or restart.
 - Versioned runtime snapshot export/import with validation before restore.
+- Local MCP-style stdio JSON-RPC bridge for manifest discovery and `tools/call`
+  execution against runtime requests.
