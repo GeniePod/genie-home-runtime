@@ -28,5 +28,9 @@ Initial scaffold for Genie Home Runtime.
   discovered devices.
 - MCP-facing tool/resource manifest for the upper `genie-claw` agent layer.
 - Basic scene model with nested action safety evaluation before scene execution.
+- Basic automation model with HH:MM scheduler tick execution and action-group
+  safety evaluation.
+- Sensitive unlock/open actions now require confirmation for automation,
+  schedule, bridge, local API, voice, and agent origins.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

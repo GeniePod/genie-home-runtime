@@ -1,3 +1,6 @@
+use crate::automation::{
+    Automation, AutomationBlock, AutomationCondition, AutomationTickResult, AutomationTrigger,
+};
 use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
 use crate::connectivity::{ConnectivityApplyResult, ConnectivityReport};
 use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
@@ -12,6 +15,7 @@ use time::OffsetDateTime;
 pub struct RuntimeStatus {
     pub entity_count: usize,
     pub scene_count: usize,
+    pub automation_count: usize,
     pub audit_count: usize,
     pub safety_policy: SafetyPolicy,
 }
@@ -28,6 +32,7 @@ pub struct AuditEntry {
 pub struct HomeRuntime {
     graph: EntityGraph,
     scenes: BTreeMap<EntityId, Scene>,
+    automations: BTreeMap<String, Automation>,
     policy: SafetyPolicy,
     audit: Vec<AuditEntry>,
 }
@@ -37,6 +42,7 @@ impl HomeRuntime {
         Self {
             graph: EntityGraph::default(),
             scenes: BTreeMap::new(),
+            automations: BTreeMap::new(),
             policy,
             audit: Vec::new(),
         }
@@ -54,6 +60,10 @@ impl HomeRuntime {
         self.scenes.insert(scene.id.clone(), scene);
     }
 
+    pub fn upsert_automation(&mut self, automation: Automation) {
+        self.automations.insert(automation.id.clone(), automation);
+    }
+
     pub fn graph(&self) -> &EntityGraph {
         &self.graph
     }
@@ -62,10 +72,15 @@ impl HomeRuntime {
         self.scenes.values()
     }
 
+    pub fn automations(&self) -> impl Iterator<Item = &Automation> {
+        self.automations.values()
+    }
+
     pub fn status(&self) -> RuntimeStatus {
         RuntimeStatus {
             entity_count: self.graph.len(),
             scene_count: self.scenes.len(),
+            automation_count: self.automations.len(),
             audit_count: self.audit.len(),
             safety_policy: self.policy.clone(),
         }
@@ -108,6 +123,9 @@ impl HomeRuntime {
             RuntimeRequest::ListEntities => RuntimeResponse::Entities {
                 entities: self.graph.entities().map(EntitySnapshot::from).collect(),
             },
+            RuntimeRequest::ListAutomations => RuntimeResponse::Automations {
+                automations: self.automations().cloned().collect(),
+            },
             RuntimeRequest::Audit { limit } => RuntimeResponse::Audit {
                 entries: self.recent_audit(limit.unwrap_or(20)),
             },
@@ -135,6 +153,10 @@ impl HomeRuntime {
             RuntimeRequest::ApplyConnectivityReport { report } => {
                 let result = self.apply_connectivity_report(report);
                 RuntimeResponse::ConnectivityApplied { result }
+            }
+            RuntimeRequest::RunAutomationTick { now_hh_mm } => {
+                let result = self.run_automation_tick(now_hh_mm);
+                RuntimeResponse::AutomationTick { result }
             }
         }
     }
@@ -189,6 +211,68 @@ impl HomeRuntime {
             devices_seen: report.devices.len(),
             entities_upserted,
         }
+    }
+
+    pub fn run_automation_tick(&mut self, now_hh_mm: String) -> AutomationTickResult {
+        let automations = self.automations().cloned().collect::<Vec<_>>();
+        let mut result = AutomationTickResult {
+            now_hh_mm: now_hh_mm.clone(),
+            automations_checked: automations.len(),
+            automations_triggered: 0,
+            actions_executed: 0,
+            blocked: Vec::new(),
+        };
+
+        for automation in automations {
+            if !automation.enabled || !automation_triggered(&automation.trigger, &now_hh_mm) {
+                continue;
+            }
+            if !self.automation_conditions_pass(&automation.conditions) {
+                continue;
+            }
+            result.automations_triggered += 1;
+
+            let mut blocked = None;
+            for action in &automation.actions {
+                let command = HomeCommand::new(CommandOrigin::Automation, action.clone());
+                let decision = if action.kind == HomeActionKind::ActivateScene {
+                    self.evaluate_scene_command(&command)
+                } else {
+                    self.evaluate(&command)
+                };
+                if !decision.allowed {
+                    blocked = Some(decision);
+                    break;
+                }
+            }
+
+            if let Some(decision) = blocked {
+                result.blocked.push(AutomationBlock {
+                    automation_id: automation.id,
+                    decision,
+                });
+                continue;
+            }
+
+            for action in automation.actions {
+                let decision = self.execute(HomeCommand::new(CommandOrigin::Automation, action));
+                if decision.allowed {
+                    result.actions_executed += 1;
+                }
+            }
+        }
+
+        result
+    }
+
+    fn automation_conditions_pass(&self, conditions: &[AutomationCondition]) -> bool {
+        conditions.iter().all(|condition| match condition {
+            AutomationCondition::EntityStateIs { entity_id, state } => self
+                .graph
+                .get(entity_id)
+                .map(|entity| &entity.state == state)
+                .unwrap_or(false),
+        })
     }
 
     fn apply_state_change(&mut self, command: &HomeCommand) {
@@ -259,6 +343,12 @@ impl HomeRuntime {
     }
 }
 
+fn automation_triggered(trigger: &AutomationTrigger, now_hh_mm: &str) -> bool {
+    match trigger {
+        AutomationTrigger::TimeOfDay { hh_mm } => hh_mm == now_hh_mm,
+    }
+}
+
 pub fn demo_runtime() -> HomeRuntime {
     let mut runtime = HomeRuntime::with_default_policy();
     let kitchen_light = EntityId::new("light.kitchen").expect("valid demo entity id");
@@ -284,8 +374,22 @@ pub fn demo_runtime() -> HomeRuntime {
     );
     runtime.upsert_scene(
         Scene::new(movie_scene, "Movie Night").with_action(HomeAction {
-            target: TargetSelector::exact(kitchen_light),
+            target: TargetSelector::exact(kitchen_light.clone()),
             kind: HomeActionKind::TurnOn,
+            value: None,
+        }),
+    );
+    runtime.upsert_automation(
+        Automation::new(
+            "automation.kitchen_lights_out",
+            "Kitchen Lights Out",
+            AutomationTrigger::TimeOfDay {
+                hh_mm: "23:00".into(),
+            },
+        )
+        .with_action(HomeAction {
+            target: TargetSelector::exact(kitchen_light),
+            kind: HomeActionKind::TurnOff,
             value: None,
         }),
     );
@@ -482,6 +586,58 @@ mod tests {
         ));
 
         assert_eq!(decision.reason, SafetyReason::SceneActionBlocked);
+        assert_eq!(
+            runtime.graph().get(&lock_id).unwrap().state,
+            EntityState::Locked
+        );
+    }
+
+    #[test]
+    fn automation_tick_executes_matching_time_trigger() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut runtime = demo_runtime();
+        runtime.execute(demo_turn_on_kitchen_command());
+
+        let result = runtime.run_automation_tick("23:00".into());
+
+        assert_eq!(result.automations_checked, 1);
+        assert_eq!(result.automations_triggered, 1);
+        assert_eq!(result.actions_executed, 1);
+        assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::Off);
+    }
+
+    #[test]
+    fn automation_tick_blocks_group_before_mutation() {
+        let light_id = EntityId::new("light.kitchen").unwrap();
+        let lock_id = EntityId::new("lock.front_door").unwrap();
+        let mut runtime = demo_runtime();
+        runtime.upsert_automation(
+            Automation::new(
+                "automation.unsafe",
+                "Unsafe Automation",
+                AutomationTrigger::TimeOfDay {
+                    hh_mm: "12:00".into(),
+                },
+            )
+            .with_action(HomeAction {
+                target: TargetSelector::exact(light_id.clone()),
+                kind: HomeActionKind::TurnOn,
+                value: None,
+            })
+            .with_action(HomeAction {
+                target: TargetSelector::exact(lock_id.clone()),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            }),
+        );
+
+        let result = runtime.run_automation_tick("12:00".into());
+
+        assert_eq!(result.blocked.len(), 1);
+        assert_eq!(
+            runtime.graph().get(&light_id).unwrap().state,
+            EntityState::Off
+        );
         assert_eq!(
             runtime.graph().get(&lock_id).unwrap().state,
             EntityState::Locked

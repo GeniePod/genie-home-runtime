@@ -46,6 +46,8 @@ Safety is inspired by autonomous-runtime discipline:
 - resolve target confidence
 - check current device availability/state
 - require confirmation for high-risk actions
+- require confirmation for sensitive indirect actions from agents,
+  automations, schedules, bridges, and local APIs
 - block ambiguous multi-target sensitive actions
 - record every decision
 
@@ -91,9 +93,11 @@ The first stable boundary is JSON-shaped and intentionally small:
 - `status`: runtime health and safety policy summary
 - `list_entities`: current entity snapshots
 - `list_scenes`: registered scene definitions
+- `list_automations`: registered automation definitions
 - `audit`: recent runtime decisions
 - `evaluate`: return a safety decision without mutating state
 - `execute`: apply the command only if the deterministic safety policy allows it
+- `run_automation_tick`: evaluate local automations for a scheduler tick
 
 `evaluate` is the preferred first call from `genie-claw` when it needs to ask
 "can this physical action happen?" before presenting confirmation UI or sending
@@ -160,7 +164,13 @@ through the safety layer, and every nested scene action is evaluated before any
 state mutation is applied. A scene cannot be used to bypass lock, cover, HVAC,
 or other sensitive action checks.
 
+Automations are modeled as enabled rules with explicit triggers, conditions,
+and actions. The first scheduler boundary is an HH:MM tick. Matching
+automations evaluate all actions before mutating state, so a blocked nested
+action prevents partial execution.
+
 ## Next Alpha Targets
 
 - local MCP server transport
+- richer scheduler persistence and catch-up policy
 - support-bundle integration with `genie-ctl`

@@ -1,6 +1,6 @@
 use crate::{
-    AuditEntry, ConnectivityApplyResult, ConnectivityReport, Entity, HomeCommand, RuntimeStatus,
-    SafetyDecision, Scene,
+    AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
+    Entity, HomeCommand, RuntimeStatus, SafetyDecision, Scene,
 };
 use serde::{Deserialize, Serialize};
 
@@ -9,11 +9,13 @@ use serde::{Deserialize, Serialize};
 pub enum RuntimeRequest {
     Status,
     ListEntities,
+    ListAutomations,
     Audit { limit: Option<usize> },
     ListScenes,
     Evaluate { command: HomeCommand },
     Execute { command: HomeCommand },
     ApplyConnectivityReport { report: ConnectivityReport },
+    RunAutomationTick { now_hh_mm: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,10 +30,12 @@ pub struct ExecuteCommandRequest {
 pub enum RuntimeResponse {
     Status { status: RuntimeStatus },
     Entities { entities: Vec<EntitySnapshot> },
+    Automations { automations: Vec<Automation> },
     Audit { entries: Vec<AuditEntry> },
     Scenes { scenes: Vec<Scene> },
     Command { result: CommandResponse },
     ConnectivityApplied { result: ConnectivityApplyResult },
+    AutomationTick { result: AutomationTickResult },
     Error { error: String },
 }
 

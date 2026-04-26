@@ -4,6 +4,7 @@
 //! the stable seams: entity graph, command model, safety policy, runtime state,
 //! and audit entries.
 
+pub mod automation;
 pub mod command;
 pub mod connectivity;
 pub mod entity;
@@ -14,6 +15,9 @@ pub mod runtime;
 pub mod safety;
 pub mod scene;
 
+pub use automation::{
+    Automation, AutomationBlock, AutomationCondition, AutomationTickResult, AutomationTrigger,
+};
 pub use command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
 pub use connectivity::{
     ConnectivityApplyResult, ConnectivityDevice, ConnectivityEntity, ConnectivityProtocol,

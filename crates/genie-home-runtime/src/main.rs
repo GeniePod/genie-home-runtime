@@ -22,6 +22,10 @@ fn main() -> Result<()> {
         "demo" => run_demo()?,
         "entities" => list_entities()?,
         "scenes" => list_scenes()?,
+        "automations" => list_automations()?,
+        "automation-tick" => {
+            run_automation_tick(args.get(2).map(String::as_str).unwrap_or("23:00"))?
+        }
         "evaluate" => handle_json_request(false)?,
         "execute" => handle_json_request(true)?,
         "connectivity-demo" => print_connectivity_demo()?,
@@ -76,6 +80,8 @@ COMMANDS:
     demo      Run an in-memory safety/action demo
     entities  Print demo entity graph
     scenes    Print demo scenes
+    automations  Print demo automations
+    automation-tick  Run demo automations for HH:MM
     evaluate  Read a HomeCommand JSON from stdin and evaluate without executing
     execute   Read a HomeCommand JSON from stdin and execute if allowed
     connectivity-demo  Print a sample GenieOS connectivity report request
@@ -109,6 +115,20 @@ fn list_entities() -> Result<()> {
 fn list_scenes() -> Result<()> {
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::ListScenes);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn list_automations() -> Result<()> {
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::ListAutomations);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn run_automation_tick(now_hh_mm: &str) -> Result<()> {
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::RunAutomationTick {
+        now_hh_mm: now_hh_mm.into(),
+    });
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
@@ -358,6 +378,7 @@ fn serialize_runtime_response(response: &RuntimeResponse) -> String {
 fn response_persists_entities(response: &RuntimeResponse) -> bool {
     matches!(response, RuntimeResponse::Command { result } if result.executed)
         || matches!(response, RuntimeResponse::ConnectivityApplied { result } if result.entities_upserted > 0)
+        || matches!(response, RuntimeResponse::AutomationTick { result } if result.actions_executed > 0)
 }
 
 struct SqliteStateStore {
@@ -515,6 +536,21 @@ mod tests {
                 source: "test".into(),
                 devices_seen: 1,
                 entities_upserted: 1,
+            },
+        };
+
+        assert!(response_persists_entities(&response));
+    }
+
+    #[test]
+    fn automation_tick_response_triggers_state_persistence() {
+        let response = RuntimeResponse::AutomationTick {
+            result: genie_home_core::AutomationTickResult {
+                now_hh_mm: "23:00".into(),
+                automations_checked: 1,
+                automations_triggered: 1,
+                actions_executed: 1,
+                blocked: Vec::new(),
             },
         };
 

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct SafetyPolicy {
     pub min_target_confidence: f32,
     pub require_available_state: bool,
-    pub require_confirmation_for_sensitive_voice: bool,
+    pub require_confirmation_for_sensitive_indirect: bool,
     pub allow_critical_without_confirmation: bool,
 }
 
@@ -15,7 +15,7 @@ impl Default for SafetyPolicy {
         Self {
             min_target_confidence: 0.78,
             require_available_state: true,
-            require_confirmation_for_sensitive_voice: true,
+            require_confirmation_for_sensitive_indirect: true,
             allow_critical_without_confirmation: false,
         }
     }
@@ -132,11 +132,19 @@ fn should_require_confirmation(
     if entity.safety_class == SafetyClass::Sensitive {
         return true;
     }
-    if !policy.require_confirmation_for_sensitive_voice {
+    if !policy.require_confirmation_for_sensitive_indirect {
         return false;
     }
     command.action.kind.is_sensitive()
-        && matches!(command.origin, CommandOrigin::Voice | CommandOrigin::Agent)
+        && matches!(
+            command.origin,
+            CommandOrigin::Voice
+                | CommandOrigin::Agent
+                | CommandOrigin::Automation
+                | CommandOrigin::Schedule
+                | CommandOrigin::Bridge
+                | CommandOrigin::LocalApi
+        )
 }
 
 fn entity_supports_action(entity: &Entity, action: &HomeActionKind) -> bool {
@@ -205,6 +213,28 @@ mod tests {
         );
         let command = HomeCommand::new(
             CommandOrigin::Voice,
+            HomeAction {
+                target: TargetSelector::exact(id),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            },
+        );
+
+        let decision = evaluate_command(&graph, &command, &SafetyPolicy::default());
+        assert!(!decision.allowed);
+        assert!(decision.requires_confirmation);
+    }
+
+    #[test]
+    fn requires_confirmation_for_automation_unlock() {
+        let id = EntityId::new("lock.front_door").unwrap();
+        let graph = graph_with(
+            Entity::new(id.clone(), "Front Door")
+                .with_state(EntityState::Locked)
+                .with_capability(Capability::Lock),
+        );
+        let command = HomeCommand::new(
+            CommandOrigin::Automation,
             HomeAction {
                 target: TargetSelector::exact(id),
                 kind: HomeActionKind::Unlock,

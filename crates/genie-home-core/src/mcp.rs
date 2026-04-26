@@ -45,6 +45,11 @@ pub fn default_mcp_surface() -> McpSurface {
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
+                "home.list_automations",
+                "Return registered automation definitions.",
+                serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+            ),
+            tool(
                 "home.evaluate",
                 "Evaluate whether a physical home command is allowed without executing it.",
                 serde_json::json!({
@@ -83,6 +88,16 @@ pub fn default_mcp_surface() -> McpSurface {
                     "additionalProperties": false
                 }),
             ),
+            tool(
+                "home.run_automation_tick",
+                "Run local automation evaluation for a scheduler HH:MM tick.",
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["now_hh_mm"],
+                    "properties": {"now_hh_mm": {"type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$"}},
+                    "additionalProperties": false
+                }),
+            ),
         ],
         resources: vec![
             resource(
@@ -94,6 +109,11 @@ pub fn default_mcp_surface() -> McpSurface {
                 "genie-home://scenes",
                 "scenes",
                 "Registered Genie Home Runtime scene definitions.",
+            ),
+            resource(
+                "genie-home://automations",
+                "automations",
+                "Registered Genie Home Runtime automation definitions.",
             ),
             resource(
                 "genie-home://audit/recent",
