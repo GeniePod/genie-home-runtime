@@ -182,6 +182,14 @@ are reported back instead of silently creating new controls. This keeps
 discovery explicit and prevents malformed hardware messages from expanding the
 actuation surface.
 
+For development and CI, `genie-home-core::mock_hardware` provides a deterministic
+hardware interface. The reference mock home exposes Thread, Matter, Zigbee, and
+BLE-like devices, emits discovery/state reports, applies supported commands,
+simulates offline devices, and includes radio-style attributes such as RSSI,
+link quality, battery, and sequence numbers. This is not a replacement for
+GenieOS driver validation, but it lets the runtime and upper agent layer test
+realistic hardware flows before physical devices are present.
+
 The runtime exposes a hardware inventory API so upper layers can be truthful
 about support. UART and ESP32-C6 are runtime-boundary ready because the runtime
 can ingest their normalized reports. Actual serial/SPI drivers, ESP32 firmware,

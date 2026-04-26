@@ -367,12 +367,20 @@ impl HomeRuntime {
             entities_updated += 1;
         }
 
-        StateApplyResult {
+        let result = StateApplyResult {
             source: report.source,
             updates_seen,
             entities_updated,
             unknown_entities,
-        }
+        };
+        self.events
+            .push(RuntimeEvent::new(RuntimeEventKind::StateReportApplied {
+                source: result.source.clone(),
+                updates_seen: result.updates_seen,
+                entities_updated: result.entities_updated,
+                unknown_entities: result.unknown_entities.len(),
+            }));
+        result
     }
 
     pub fn configure_scene(&mut self, scene: Scene) -> ConfigChangeResult {

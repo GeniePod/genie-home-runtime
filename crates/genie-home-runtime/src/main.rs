@@ -1,10 +1,11 @@
 use anyhow::Result;
 use genie_home_core::{
-    AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, RuntimeEvent,
-    RuntimeRequest, RuntimeResponse, Scene, StateReport, build_home_assistant_import_plan,
-    build_home_assistant_migration_report, default_hardware_inventory, default_mcp_surface,
-    demo_runtime, demo_turn_on_kitchen_command, domain_support_matrix,
-    parse_home_assistant_entities_json, service_specs,
+    AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, HardwareInterface,
+    MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse, Scene, StateReport,
+    build_home_assistant_import_plan, build_home_assistant_migration_report,
+    default_hardware_inventory, default_mcp_surface, demo_runtime, demo_turn_on_kitchen_command,
+    domain_support_matrix, mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
+    service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -43,6 +44,7 @@ fn main() -> Result<()> {
         "upsert-automation" => handle_upsert_automation()?,
         "delete-automation" => handle_delete_automation(args.get(2).map(String::as_str))?,
         "apply-state-report" => handle_state_report()?,
+        "mock-hardware-demo" => print_mock_hardware_demo()?,
         "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
         "ha-import-plan" => print_ha_import_plan(args.get(2).map(String::as_str))?,
@@ -119,6 +121,7 @@ COMMANDS:
     upsert-automation  Read an Automation JSON from stdin and validate/install it
     delete-automation  Delete an automation definition by id
     apply-state-report  Read a StateReport JSON from stdin and apply entity states
+    mock-hardware-demo  Run a deterministic mock hardware discovery/state/action demo
     connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
     ha-import-plan  Print a Genie connectivity import plan from Home Assistant states
@@ -247,6 +250,32 @@ fn handle_state_report() -> Result<()> {
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::ApplyStateReport { report });
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn print_mock_hardware_demo() -> Result<()> {
+    let mut hardware = MockHardwareBus::reference_home();
+    let discovery_report = hardware.discovery_report();
+    let initial_state_report = hardware.poll_state();
+    let command = mock_turn_on_thread_lamp_command();
+    let command_result = hardware.apply_command(&command);
+    let final_state_report = command_result.state_report.clone();
+
+    print_stdout_line(&serde_json::to_string_pretty(&serde_json::json!({
+        "schema": "genie.home.mock_hardware_demo.v1",
+        "source": hardware.source(),
+        "devices": hardware.entities().count(),
+        "discovery_request": RuntimeRequest::ApplyConnectivityReport {
+            report: discovery_report,
+        },
+        "initial_state_request": RuntimeRequest::ApplyStateReport {
+            report: initial_state_report,
+        },
+        "command": command,
+        "command_result": command_result,
+        "final_state_request": final_state_report.map(|report| RuntimeRequest::ApplyStateReport {
+            report,
+        }),
+    }))?)
 }
 
 fn list_automations() -> Result<()> {
@@ -405,7 +434,10 @@ fn serve(
         match stream {
             Ok(mut stream) => {
                 let mut input = String::new();
-                stream.read_to_string(&mut input)?;
+                if let Err(err) = stream.read_to_string(&mut input) {
+                    eprintln!("request read error: {err}");
+                    continue;
+                }
                 let audit_start = runtime.audit_len();
                 let event_start = runtime.event_len();
                 let response = handle_runtime_request(&mut runtime, &input);
@@ -418,8 +450,9 @@ fn serve(
                 let output = serialize_runtime_response(&response);
                 append_new_audit_entries(audit_log_path, runtime.audit_since(audit_start))?;
                 append_new_event_entries(event_log_path, runtime.events_since(event_start))?;
-                stream.write_all(output.as_bytes())?;
-                stream.write_all(b"\n")?;
+                if let Err(err) = write_socket_response(&mut stream, &output) {
+                    eprintln!("response write error: {err}");
+                }
             }
             Err(err) => {
                 eprintln!("connection error: {err}");
@@ -428,6 +461,24 @@ fn serve(
     }
 
     Ok(())
+}
+
+fn write_socket_response(stream: &mut impl Write, output: &str) -> Result<()> {
+    match stream
+        .write_all(output.as_bytes())
+        .and_then(|_| stream.write_all(b"\n"))
+    {
+        Ok(()) => Ok(()),
+        Err(err)
+            if matches!(
+                err.kind(),
+                ErrorKind::BrokenPipe | ErrorKind::ConnectionReset
+            ) =>
+        {
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
 }
 
 #[cfg(not(unix))]

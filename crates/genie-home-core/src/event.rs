@@ -38,6 +38,12 @@ pub enum RuntimeEventKind {
         devices_seen: usize,
         entities_upserted: usize,
     },
+    StateReportApplied {
+        source: String,
+        updates_seen: usize,
+        entities_updated: usize,
+        unknown_entities: usize,
+    },
     AutomationTick {
         now_hh_mm: String,
         automations_triggered: usize,

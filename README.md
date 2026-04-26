@@ -70,6 +70,8 @@ Implemented now:
 - Home Assistant states compatibility report for migration planning
 - GenieOS connectivity report contract for discovered devices
 - MCP-facing tool/resource manifest with permission labels for `genie-claw`
+- deterministic mock hardware simulator with Thread, Matter, Zigbee, and BLE
+  reference devices for hardware-free tests
 - reference systemd packaging for a production local socket service
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
@@ -129,6 +131,7 @@ cargo run -p genie-home-runtime -- entities
 cargo run -p genie-home-runtime -- services
 cargo run -p genie-home-runtime -- domains
 cargo run -p genie-home-runtime -- hardware
+cargo run -p genie-home-runtime -- mock-hardware-demo
 cargo run -p genie-home-runtime -- events
 cargo run -p genie-home-runtime -- scenes
 cargo run -p genie-home-runtime -- automations
@@ -166,6 +169,12 @@ Generate a sample GenieOS connectivity report request:
 
 ```bash
 cargo run -p genie-home-runtime -- connectivity-demo
+```
+
+Run a deterministic mock hardware flow:
+
+```bash
+cargo run -p genie-home-runtime -- mock-hardware-demo
 ```
 
 Print the MCP-facing tool/resource manifest:

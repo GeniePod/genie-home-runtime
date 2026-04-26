@@ -13,6 +13,7 @@ pub mod event;
 pub mod hardware;
 pub mod mcp;
 pub mod migration;
+pub mod mock_hardware;
 pub mod protocol;
 pub mod runtime;
 pub mod safety;
@@ -29,7 +30,7 @@ pub use connectivity::{
     ConnectivityReport, EntityStateUpdate, StateApplyResult, StateReport,
 };
 pub use device::{Device, DeviceId, DeviceIdError, DeviceRegistry};
-pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
+pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState, SafetyClass};
 pub use event::{RuntimeEvent, RuntimeEventKind};
 pub use hardware::{
     HardwareAdapterState, HardwareAdapterStatus, HardwareCapability, HardwareInventory,
@@ -40,6 +41,10 @@ pub use migration::{
     HomeAssistantEntityRecord, MigrationCandidate, MigrationCompatibility, MigrationCounts,
     MigrationImportPlan, MigrationReport, build_home_assistant_import_plan,
     build_home_assistant_migration_report, parse_home_assistant_entities_json,
+};
+pub use mock_hardware::{
+    HardwareInterface, MockHardwareBus, MockHardwareCommandResult, MockIoTEntity,
+    mock_turn_on_thread_lamp_command,
 };
 pub use protocol::{
     CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot, EntitySnapshot,
