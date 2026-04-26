@@ -10,6 +10,7 @@ pub mod connectivity;
 pub mod device;
 pub mod entity;
 pub mod event;
+pub mod hardware;
 pub mod mcp;
 pub mod migration;
 pub mod protocol;
@@ -30,6 +31,10 @@ pub use connectivity::{
 pub use device::{Device, DeviceId, DeviceIdError, DeviceRegistry};
 pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 pub use event::{RuntimeEvent, RuntimeEventKind};
+pub use hardware::{
+    HardwareAdapterState, HardwareAdapterStatus, HardwareCapability, HardwareInventory,
+    HardwareSupportLevel, default_hardware_inventory,
+};
 pub use mcp::{McpPermission, McpResourceSpec, McpSurface, McpToolSpec, default_mcp_surface};
 pub use migration::{
     HomeAssistantEntityRecord, MigrationCandidate, MigrationCompatibility, MigrationCounts,
@@ -46,7 +51,8 @@ pub use runtime::{
 pub use safety::{SafetyDecision, SafetyPolicy, SafetyReason};
 pub use scene::Scene;
 pub use service::{
-    ServiceActionResult, ServiceCall, ServiceCallError, ServiceCallResult, ServiceSpec,
-    ServiceTarget, service_call_to_commands, service_specs,
+    DomainSupport, DomainSupportLevel, ServiceActionResult, ServiceCall, ServiceCallError,
+    ServiceCallResult, ServiceSpec, ServiceTarget, domain_support_matrix, service_call_to_commands,
+    service_specs,
 };
 pub use validation::{ValidationIssue, ValidationReport, ValidationSeverity, validate_runtime};

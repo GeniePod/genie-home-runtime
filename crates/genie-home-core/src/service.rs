@@ -10,6 +10,22 @@ pub struct ServiceSpec {
     pub action_kind: Option<HomeActionKind>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DomainSupport {
+    pub domain: String,
+    pub support_level: DomainSupportLevel,
+    pub services: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DomainSupportLevel {
+    SafetyGatedActuation,
+    ReadOnlyViaEntityState,
+    Planned,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceCall {
     pub domain: String,
@@ -122,6 +138,78 @@ pub fn service_specs() -> Vec<ServiceSpec> {
             HomeActionKind::SetValue,
         ),
     ]
+}
+
+pub fn domain_support_matrix() -> Vec<DomainSupport> {
+    let mut domains = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for spec in service_specs() {
+        domains.entry(spec.domain).or_default().push(spec.service);
+    }
+
+    let mut supported = domains
+        .into_iter()
+        .map(|(domain, services)| DomainSupport {
+            notes: domain_notes(&domain),
+            domain,
+            support_level: DomainSupportLevel::SafetyGatedActuation,
+            services,
+        })
+        .collect::<Vec<_>>();
+
+    supported.extend([
+        planned_domain(
+            "sensor",
+            DomainSupportLevel::ReadOnlyViaEntityState,
+            "Sensor entities are represented as state snapshots. Direct actuation is intentionally unavailable.",
+        ),
+        planned_domain(
+            "binary_sensor",
+            DomainSupportLevel::ReadOnlyViaEntityState,
+            "Binary sensors are represented as state snapshots. Direct actuation is intentionally unavailable.",
+        ),
+        planned_domain(
+            "media_player",
+            DomainSupportLevel::Planned,
+            "Media control is planned after volume, playback, and source safety policies are defined.",
+        ),
+        planned_domain(
+            "vacuum",
+            DomainSupportLevel::Planned,
+            "Vacuum control is planned after room targeting, dock safety, and obstacle policy are defined.",
+        ),
+        planned_domain(
+            "alarm_control_panel",
+            DomainSupportLevel::Planned,
+            "Alarm control requires explicit household security policy and is not implemented in this runtime alpha.",
+        ),
+    ]);
+    supported.sort_by(|left, right| left.domain.cmp(&right.domain));
+    supported
+}
+
+fn planned_domain(domain: &str, support_level: DomainSupportLevel, note: &str) -> DomainSupport {
+    DomainSupport {
+        domain: domain.into(),
+        support_level,
+        services: Vec::new(),
+        notes: vec![note.into()],
+    }
+}
+
+fn domain_notes(domain: &str) -> Vec<String> {
+    match domain {
+        "lock" => vec!["Unlock requires confirmation for unsafe origins.".into()],
+        "cover" => vec!["Open/close actions are treated as sensitive physical actuation.".into()],
+        "climate" => {
+            vec!["Temperature setpoint is supported; full HVAC mode policy is planned.".into()]
+        }
+        "scene" => {
+            vec!["Scene activation evaluates every nested action before any mutation.".into()]
+        }
+        _ => {
+            vec!["Direct service calls are translated into Genie commands and safety-gated.".into()]
+        }
+    }
 }
 
 pub fn service_call_to_commands(
@@ -265,5 +353,26 @@ mod tests {
             service_call_to_commands(&graph, &call),
             Err(ServiceCallError::TargetDomainMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn domain_matrix_reports_supported_and_planned_domains() {
+        let matrix = domain_support_matrix();
+        let light = matrix
+            .iter()
+            .find(|domain| domain.domain == "light")
+            .unwrap();
+        let alarm = matrix
+            .iter()
+            .find(|domain| domain.domain == "alarm_control_panel")
+            .unwrap();
+
+        assert_eq!(
+            light.support_level,
+            DomainSupportLevel::SafetyGatedActuation
+        );
+        assert!(light.services.contains(&"turn_on".into()));
+        assert_eq!(alarm.support_level, DomainSupportLevel::Planned);
+        assert!(alarm.services.is_empty());
     }
 }

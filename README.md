@@ -8,7 +8,8 @@ own the deterministic home-control plane:
 
 - device graph and entity model
 - state, scenes, automations, and schedules
-- Matter, Thread, Zigbee, BLE, Wi-Fi, and bridge integrations
+- normalized Matter, Thread, Zigbee, BLE, Wi-Fi, UART, and bridge reports from
+  GenieOS
 - final physical-actuation safety checks
 - audit logs and replayable runtime events
 - local MCP/API surface for upper agent layers
@@ -48,6 +49,9 @@ Implemented now:
 - basic scene model with nested action safety checks
 - basic automation model with scheduler tick execution
 - Home Assistant-style domain service catalog and safety-gated service calls
+- home domain support matrix for implemented, read-only, and planned domains
+- hardware/protocol inventory that explicitly separates runtime support from
+  GenieOS driver requirements
 - Home Assistant-style runtime event log for state/service/connectivity/automation events
 - Home Assistant-style device registry with entity-to-device attribution
 - self-validation report for runtime registry and automation invariants
@@ -70,11 +74,21 @@ Implemented now:
 
 Not implemented yet:
 
-- real protocol adapters
-- scheduler/automation engine
+- real protocol/radio drivers in this repo
+- full scheduler catch-up/missed-run engine
 - MCP server
-- Matter/Thread/BLE integrations
-- migration/import tooling for users moving from Home Assistant
+- direct Matter/Thread/BLE commissioning in this repo
+- full migration/import tooling for users moving from Home Assistant
+
+Hardware boundary:
+
+- `genie-home-runtime` is ready to ingest normalized hardware/connectivity
+  reports.
+- GenieOS owns actual Jetson drivers, ESP32-C6 UART/SPI transport,
+  ESP-Hosted-NG, Matter fabrics, Thread border router support, BLE scanning,
+  and radio lifecycle.
+- If an API reports `requires_genie_os_driver`, that is intentional; this repo
+  must not pretend physical hardware is complete before hardware validation.
 
 ## Home Assistant Reference And Migration
 
@@ -111,6 +125,8 @@ cargo run -p genie-home-runtime -- demo
 cargo run -p genie-home-runtime -- devices
 cargo run -p genie-home-runtime -- entities
 cargo run -p genie-home-runtime -- services
+cargo run -p genie-home-runtime -- domains
+cargo run -p genie-home-runtime -- hardware
 cargo run -p genie-home-runtime -- events
 cargo run -p genie-home-runtime -- scenes
 cargo run -p genie-home-runtime -- automations

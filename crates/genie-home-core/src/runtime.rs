@@ -6,13 +6,15 @@ use crate::connectivity::{ConnectivityApplyResult, ConnectivityReport};
 use crate::device::{Device, DeviceId, DeviceRegistry};
 use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 use crate::event::{RuntimeEvent, RuntimeEventKind};
+use crate::hardware::default_hardware_inventory;
 use crate::protocol::{
     CommandResponse, DeviceSnapshot, EntitySnapshot, RuntimeRequest, RuntimeResponse,
 };
 use crate::safety::{SafetyDecision, SafetyPolicy, SafetyReason, evaluate_command};
 use crate::scene::Scene;
 use crate::service::{
-    ServiceActionResult, ServiceCall, ServiceCallResult, service_call_to_commands, service_specs,
+    ServiceActionResult, ServiceCall, ServiceCallResult, domain_support_matrix,
+    service_call_to_commands, service_specs,
 };
 use crate::validation::validate_runtime;
 use serde::{Deserialize, Serialize};
@@ -170,6 +172,12 @@ impl HomeRuntime {
             },
             RuntimeRequest::ListServices => RuntimeResponse::Services {
                 services: service_specs(),
+            },
+            RuntimeRequest::ListDomains => RuntimeResponse::Domains {
+                domains: domain_support_matrix(),
+            },
+            RuntimeRequest::HardwareInventory => RuntimeResponse::HardwareInventory {
+                inventory: default_hardware_inventory(),
             },
             RuntimeRequest::Audit { limit } => RuntimeResponse::Audit {
                 entries: self.recent_audit(limit.unwrap_or(20)),
@@ -678,6 +686,37 @@ mod tests {
         };
         assert_eq!(entries.len(), 1);
         assert!(entries[0].decision.allowed);
+    }
+
+    #[test]
+    fn handle_hardware_inventory_request_is_truthful_about_radio_drivers() {
+        let mut runtime = demo_runtime();
+        let response = runtime.handle_request(RuntimeRequest::HardwareInventory);
+
+        let RuntimeResponse::HardwareInventory { inventory } = response else {
+            panic!("expected hardware inventory response");
+        };
+        let thread = inventory
+            .adapters
+            .iter()
+            .find(|adapter| adapter.protocol == crate::ConnectivityProtocol::Thread)
+            .unwrap();
+        assert_eq!(
+            thread.support_level,
+            crate::HardwareSupportLevel::RequiresGenieOsDriver
+        );
+    }
+
+    #[test]
+    fn handle_domain_request_reports_service_coverage() {
+        let mut runtime = demo_runtime();
+        let response = runtime.handle_request(RuntimeRequest::ListDomains);
+
+        let RuntimeResponse::Domains { domains } = response else {
+            panic!("expected domain response");
+        };
+        assert!(domains.iter().any(|domain| domain.domain == "light"));
+        assert!(domains.iter().any(|domain| domain.domain == "sensor"));
     }
 
     #[test]

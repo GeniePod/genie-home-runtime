@@ -43,3 +43,7 @@ Initial scaffold for Genie Home Runtime.
 - SQLite persistence for scene and automation registries.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.
+- Runtime hardware/protocol inventory API that marks UART/ESP32-C6 as
+  report-boundary ready and radio drivers as GenieOS responsibilities.
+- Domain support matrix API for implemented safety-gated domains, read-only
+  state domains, and planned domains.

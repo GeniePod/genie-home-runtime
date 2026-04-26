@@ -74,6 +74,18 @@ pub fn default_mcp_surface() -> McpSurface {
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
+                "home.list_domains",
+                "Return implemented, read-only, and planned home domain coverage.",
+                vec![McpPermission::HomeRead],
+                serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+            ),
+            tool(
+                "home.hardware_inventory",
+                "Return runtime hardware/protocol support boundaries and GenieOS driver requirements.",
+                vec![McpPermission::HomeRead],
+                serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+            ),
+            tool(
                 "home.list_scenes",
                 "Return registered scene definitions.",
                 vec![McpPermission::HomeRead],
@@ -181,6 +193,18 @@ pub fn default_mcp_surface() -> McpSurface {
                 vec![McpPermission::HomeRead],
             ),
             resource(
+                "genie-home://domains",
+                "domains",
+                "Implemented, read-only, and planned home domain support matrix.",
+                vec![McpPermission::HomeRead],
+            ),
+            resource(
+                "genie-home://hardware",
+                "hardware",
+                "Runtime hardware/protocol support inventory and GenieOS driver boundaries.",
+                vec![McpPermission::HomeRead],
+            ),
+            resource(
                 "genie-home://scenes",
                 "scenes",
                 "Registered Genie Home Runtime scene definitions.",
@@ -256,6 +280,12 @@ mod tests {
                 .tools
                 .iter()
                 .any(|tool| tool.name == "home.evaluate")
+        );
+        assert!(
+            surface
+                .tools
+                .iter()
+                .any(|tool| tool.name == "home.hardware_inventory")
         );
         let execute = surface
             .tools

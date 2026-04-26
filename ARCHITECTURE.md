@@ -96,6 +96,9 @@ The first stable boundary is JSON-shaped and intentionally small:
 - `list_devices`: current device registry snapshots
 - `list_entities`: current entity snapshots
 - `list_services`: supported Home Assistant-style domain services
+- `list_domains`: implemented, read-only, and planned domain support
+- `hardware_inventory`: runtime hardware/protocol boundaries and GenieOS
+  driver requirements
 - `list_scenes`: registered scene definitions
 - `list_automations`: registered automation definitions
 - `audit`: recent runtime decisions
@@ -168,6 +171,13 @@ publish discovered Matter, Thread, Zigbee, BLE, Wi-Fi, UART, or ESP32-C6-backed
 devices through `apply_connectivity_report`; the runtime translates those into
 entities and still owns safety checks for later actuation.
 
+The runtime exposes a hardware inventory API so upper layers can be truthful
+about support. UART and ESP32-C6 are runtime-boundary ready because the runtime
+can ingest their normalized reports. Actual serial/SPI drivers, ESP32 firmware,
+ESP-Hosted-NG, Matter fabric management, Thread border-router behavior, BLE
+GATT transport, Zigbee coordinators, Z-Wave controllers, and Wi-Fi lifecycle
+belong to GenieOS and must be validated on hardware there.
+
 The first MCP-facing surface is a manifest of tools, resources, and required
 permissions, not a full server. This keeps the tool names stable for
 `genie-claw` while the lower local socket API remains the only execution path
@@ -191,6 +201,11 @@ migration and user familiarity: `light.turn_on`, `lock.unlock`,
 Genie `HomeCommand`s and then evaluated by the same safety layer. A multi-target
 service call is all-or-nothing; if any target is blocked, none of the targets
 are mutated.
+
+The domain support matrix is intentionally explicit. It distinguishes domains
+with safety-gated actuation from read-only state domains and planned domains
+such as alarm panels, media players, and vacuums. This prevents the agent layer
+from hallucinating unsupported physical control.
 
 Runtime events provide the Home Assistant-style observability plane. State
 changes, service calls, connectivity reports, and automation ticks are emitted

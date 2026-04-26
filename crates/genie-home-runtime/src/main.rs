@@ -2,8 +2,9 @@ use anyhow::Result;
 use genie_home_core::{
     AuditEntry, Automation, ConnectivityReport, Device, Entity, RuntimeEvent, RuntimeRequest,
     RuntimeResponse, Scene, build_home_assistant_import_plan,
-    build_home_assistant_migration_report, default_mcp_surface, demo_runtime,
-    demo_turn_on_kitchen_command, parse_home_assistant_entities_json, service_specs,
+    build_home_assistant_migration_report, default_hardware_inventory, default_mcp_surface,
+    demo_runtime, demo_turn_on_kitchen_command, domain_support_matrix,
+    parse_home_assistant_entities_json, service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -26,6 +27,8 @@ fn main() -> Result<()> {
         "entities" => list_entities()?,
         "devices" => list_devices()?,
         "services" => list_services()?,
+        "domains" => list_domains()?,
+        "hardware" => print_hardware_inventory()?,
         "events" => list_demo_events()?,
         "scenes" => list_scenes()?,
         "automations" => list_automations()?,
@@ -97,6 +100,8 @@ COMMANDS:
     devices   Print demo device registry
     entities  Print demo entity graph
     services  Print supported HA-style domain services
+    domains   Print implemented and planned home domain support
+    hardware  Print runtime hardware/protocol support boundaries
     events    Print demo runtime events
     scenes    Print demo scenes
     automations  Print demo automations
@@ -147,6 +152,20 @@ fn list_devices() -> Result<()> {
 
 fn list_services() -> Result<()> {
     print_stdout_line(&serde_json::to_string_pretty(&service_specs())?)
+}
+
+fn list_domains() -> Result<()> {
+    let response = RuntimeResponse::Domains {
+        domains: domain_support_matrix(),
+    };
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn print_hardware_inventory() -> Result<()> {
+    let response = RuntimeResponse::HardwareInventory {
+        inventory: default_hardware_inventory(),
+    };
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
 fn list_demo_events() -> Result<()> {
@@ -474,6 +493,8 @@ fn build_support_bundle(
     let entities = load_entities_from_state_db(state_db_path)?;
     let scenes = load_scenes_from_state_db(state_db_path)?;
     let automations = load_automations_from_state_db(state_db_path)?;
+    let hardware = default_hardware_inventory();
+    let domains = domain_support_matrix();
     let mut recent_audit = audit.iter().rev().take(20).cloned().collect::<Vec<_>>();
     recent_audit.reverse();
     let mut recent_events = events.iter().rev().take(50).cloned().collect::<Vec<_>>();
@@ -509,6 +530,8 @@ fn build_support_bundle(
         "entities": entities,
         "scenes": scenes,
         "automations": automations,
+        "domains": domains,
+        "hardware": hardware,
         "recent_audit": recent_audit,
         "recent_events": recent_events,
     }))
