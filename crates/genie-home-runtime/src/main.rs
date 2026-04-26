@@ -4,7 +4,7 @@ use genie_home_core::{
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::path::Path;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -21,6 +21,14 @@ fn main() -> Result<()> {
         "entities" => list_entities()?,
         "evaluate" => handle_json_request(false)?,
         "execute" => handle_json_request(true)?,
+        "support-bundle" => print_support_bundle(
+            args.get(2)
+                .map(String::as_str)
+                .unwrap_or(DEFAULT_AUDIT_LOG_PATH),
+            args.get(3)
+                .map(String::as_str)
+                .unwrap_or(DEFAULT_STATE_DB_PATH),
+        )?,
         "serve" => serve(
             args.get(2)
                 .map(String::as_str)
@@ -52,6 +60,7 @@ genie-home-runtime
 
 USAGE:
     genie-home-runtime <COMMAND>
+    genie-home-runtime support-bundle [AUDIT_LOG] [STATE_DB]
     genie-home-runtime serve [SOCKET] [AUDIT_LOG] [STATE_DB]
     genie-home-runtime request [SOCKET]
 
@@ -61,6 +70,7 @@ COMMANDS:
     entities  Print demo entity graph
     evaluate  Read a HomeCommand JSON from stdin and evaluate without executing
     execute   Read a HomeCommand JSON from stdin and execute if allowed
+    support-bundle  Print local JSON diagnostics for support
     serve     Serve RuntimeRequest JSON over a Unix socket
     request   Send RuntimeRequest JSON from stdin to a Unix socket
     help      Show this help"
@@ -69,23 +79,20 @@ COMMANDS:
 
 fn print_status() -> Result<()> {
     let runtime = demo_runtime();
-    println!("{}", serde_json::to_string_pretty(&runtime.status())?);
-    Ok(())
+    print_stdout_line(&serde_json::to_string_pretty(&runtime.status())?)
 }
 
 fn run_demo() -> Result<()> {
     let mut runtime = demo_runtime();
     let decision = runtime.execute(demo_turn_on_kitchen_command());
 
-    println!("{}", serde_json::to_string_pretty(&decision)?);
-    Ok(())
+    print_stdout_line(&serde_json::to_string_pretty(&decision)?)
 }
 
 fn list_entities() -> Result<()> {
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::ListEntities);
-    println!("{}", serde_json::to_string_pretty(&response)?);
-    Ok(())
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
 fn handle_json_request(execute: bool) -> Result<()> {
@@ -99,7 +106,25 @@ fn handle_json_request(execute: bool) -> Result<()> {
     };
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(request);
-    println!("{}", serde_json::to_string_pretty(&response)?);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn print_support_bundle(audit_log_path: &str, state_db_path: &str) -> Result<()> {
+    let bundle = build_support_bundle(audit_log_path, state_db_path)?;
+    print_stdout_line(&serde_json::to_string_pretty(&bundle)?)
+}
+
+fn print_stdout_line(output: &str) -> Result<()> {
+    let mut stdout = std::io::stdout().lock();
+    if let Err(err) = stdout
+        .write_all(output.as_bytes())
+        .and_then(|_| stdout.write_all(b"\n"))
+    {
+        if err.kind() == ErrorKind::BrokenPipe {
+            return Ok(());
+        }
+        return Err(err.into());
+    }
     Ok(())
 }
 
@@ -224,6 +249,43 @@ fn load_audit_entries(path: &str) -> Result<Vec<AuditEntry>> {
         entries.push(entry);
     }
     Ok(entries)
+}
+
+fn build_support_bundle(audit_log_path: &str, state_db_path: &str) -> Result<serde_json::Value> {
+    let audit = load_audit_entries(audit_log_path)?;
+    let entities = load_entities_from_state_db(state_db_path)?;
+    let mut recent_audit = audit.iter().rev().take(20).cloned().collect::<Vec<_>>();
+    recent_audit.reverse();
+    let generated_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
+
+    Ok(serde_json::json!({
+        "schema": "genie.home.support_bundle.v1",
+        "generated_at": generated_at,
+        "runtime": {
+            "package": env!("CARGO_PKG_NAME"),
+            "version": env!("CARGO_PKG_VERSION"),
+        },
+        "paths": {
+            "audit_log": audit_log_path,
+            "audit_log_exists": Path::new(audit_log_path).exists(),
+            "state_db": state_db_path,
+            "state_db_exists": Path::new(state_db_path).exists(),
+        },
+        "counts": {
+            "entities": entities.len(),
+            "audit_entries": audit.len(),
+            "recent_audit_entries": recent_audit.len(),
+        },
+        "entities": entities,
+        "recent_audit": recent_audit,
+    }))
+}
+
+fn load_entities_from_state_db(path: &str) -> Result<Vec<Entity>> {
+    if !Path::new(path).exists() {
+        return Ok(Vec::new());
+    }
+    SqliteStateStore::open(path)?.load_entities()
 }
 
 fn handle_runtime_request(
@@ -357,5 +419,25 @@ mod tests {
             panic!("expected error response");
         };
         assert!(error.contains("invalid runtime request"));
+    }
+
+    #[test]
+    fn support_bundle_reports_counts_without_network() {
+        let db_path = temp_db_path("support");
+        let audit_path = temp_db_path("support-audit-jsonl");
+        let mut store = SqliteStateStore::open(&db_path).unwrap();
+        let mut runtime = demo_runtime();
+        runtime.execute(demo_turn_on_kitchen_command());
+        store.save_entities(runtime.graph().entities()).unwrap();
+        append_new_audit_entries(&audit_path, runtime.audit()).unwrap();
+
+        let bundle = build_support_bundle(&audit_path, &db_path).unwrap();
+
+        assert_eq!(bundle["schema"], "genie.home.support_bundle.v1");
+        assert_eq!(bundle["counts"]["entities"], 2);
+        assert_eq!(bundle["counts"]["audit_entries"], 1);
+        assert_eq!(bundle["recent_audit"].as_array().unwrap().len(), 1);
+        let _ = std::fs::remove_file(db_path);
+        let _ = std::fs::remove_file(audit_path);
     }
 }

@@ -123,10 +123,15 @@ does not reset known device state. The development default is:
 /tmp/genie-home-runtime-state.sqlite3
 ```
 
+The runtime binary can also emit a local JSON support bundle from persisted
+state and audit files. This is intentionally a CLI path first, not a network
+endpoint, so field diagnostics do not expand the physical-control attack
+surface.
+
 ## Next Alpha Targets
 
 - production systemd unit for the Unix-socket API
 - Home Assistant migration compatibility report
 - initial MCP tool/resource surface
 - ESP32-C6 Thread/Matter capability boundary with GenieOS
-- support-bundle diagnostics compatible with `genie-ctl`
+- support-bundle integration with `genie-ctl`

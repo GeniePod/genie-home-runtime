@@ -19,5 +19,6 @@ Initial scaffold for Genie Home Runtime.
 - SQLite entity snapshot persistence for runtime restarts.
 - Recent audit query support and JSONL audit persistence for executed runtime
   decisions.
+- Local JSON support bundle generation from persisted state and audit files.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

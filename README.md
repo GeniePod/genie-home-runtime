@@ -53,6 +53,7 @@ Implemented now:
 - local Unix-socket JSON API for `genie-claw` and local tools
 - SQLite entity snapshot persistence for runtime restarts
 - JSONL audit persistence for executed runtime decisions
+- local JSON support bundle for field diagnostics
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
 
@@ -121,4 +122,12 @@ Inspect recent audit entries:
 ```bash
 echo '{"type":"audit","limit":10}' \
   | cargo run -p genie-home-runtime -- request /tmp/genie-home-runtime.sock
+```
+
+Generate a local support bundle:
+
+```bash
+cargo run -p genie-home-runtime -- support-bundle \
+  /tmp/genie-home-runtime-audit.jsonl \
+  /tmp/genie-home-runtime-state.sqlite3
 ```
