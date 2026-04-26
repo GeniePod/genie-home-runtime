@@ -116,9 +116,15 @@ process. The development default is:
 /tmp/genie-home-runtime-audit.jsonl
 ```
 
+Entity snapshots are persisted in SQLite by the runtime process so a restart
+does not reset known device state. The development default is:
+
+```text
+/tmp/genie-home-runtime-state.sqlite3
+```
+
 ## Next Alpha Targets
 
-- persisted SQLite state store
 - production systemd unit for the Unix-socket API
 - Home Assistant migration compatibility report
 - initial MCP tool/resource surface

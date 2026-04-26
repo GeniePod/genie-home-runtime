@@ -16,6 +16,7 @@ Initial scaffold for Genie Home Runtime.
   evaluation, and command execution.
 - Local Unix-socket JSON API plus `request` CLI command for local agent/runtime
   calls without exposing a network port.
+- SQLite entity snapshot persistence for runtime restarts.
 - Recent audit query support and JSONL audit persistence for executed runtime
   decisions.
 - Home Assistant local reference workflow under ignored `reference/`, framed for

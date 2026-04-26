@@ -8,4 +8,6 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 genie-home-core = { path = "../genie-home-core" }
+rusqlite = { version = "0.39", features = ["bundled"] }
 serde_json.workspace = true
+time.workspace = true
