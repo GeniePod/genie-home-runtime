@@ -53,3 +53,6 @@ Initial scaffold for Genie Home Runtime.
   already-discovered entities.
 - Deterministic mock hardware interface with reference Thread, Matter, Zigbee,
   and BLE-like devices for hardware-free runtime tests.
+- Mock Home Assistant porting harness that converts simulated devices to
+  HA-style states, runs migration/import planning, and validates the imported
+  runtime graph.

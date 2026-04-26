@@ -10,6 +10,7 @@ pub mod connectivity;
 pub mod device;
 pub mod entity;
 pub mod event;
+pub mod ha_port;
 pub mod hardware;
 pub mod mcp;
 pub mod migration;
@@ -32,6 +33,10 @@ pub use connectivity::{
 pub use device::{Device, DeviceId, DeviceIdError, DeviceRegistry};
 pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState, SafetyClass};
 pub use event::{RuntimeEvent, RuntimeEventKind};
+pub use ha_port::{
+    MockHomeAssistantPortResult, mock_hardware_to_home_assistant_states,
+    run_mock_home_assistant_port,
+};
 pub use hardware::{
     HardwareAdapterState, HardwareAdapterStatus, HardwareCapability, HardwareInventory,
     HardwareSupportLevel, default_hardware_inventory,

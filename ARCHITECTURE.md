@@ -190,6 +190,13 @@ link quality, battery, and sequence numbers. This is not a replacement for
 GenieOS driver validation, but it lets the runtime and upper agent layer test
 realistic hardware flows before physical devices are present.
 
+The mock hardware layer also feeds Home Assistant porting work. The
+`ha_port` harness converts mock devices into Home Assistant-style state records,
+runs the compatibility report and import-plan code, applies the import to a
+fresh Genie runtime, and validates the resulting graph. This creates a repeatable
+test loop for porting HA domains without requiring real radios or a live Home
+Assistant instance.
+
 The runtime exposes a hardware inventory API so upper layers can be truthful
 about support. UART and ESP32-C6 are runtime-boundary ready because the runtime
 can ingest their normalized reports. Actual serial/SPI drivers, ESP32 firmware,

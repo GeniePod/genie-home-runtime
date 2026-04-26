@@ -111,6 +111,23 @@ pub fn build_home_assistant_import_plan(
             .and_then(Value::as_str)
             .map(sanitize_stable_id)
             .unwrap_or_else(|| format!("ha-{}", sanitize_stable_id(&candidate.entity_id)));
+        let protocol = record
+            .attributes
+            .get("genie_protocol")
+            .or_else(|| record.attributes.get("protocol"))
+            .and_then(Value::as_str)
+            .and_then(parse_connectivity_protocol)
+            .unwrap_or(ConnectivityProtocol::Matter);
+        let manufacturer = record
+            .attributes
+            .get("manufacturer")
+            .and_then(Value::as_str)
+            .unwrap_or("Home Assistant Migration");
+        let model = record
+            .attributes
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or(&candidate.domain);
         let area = record
             .attributes
             .get("area_id")
@@ -118,9 +135,9 @@ pub fn build_home_assistant_import_plan(
             .map(ToOwned::to_owned);
         devices.push(ConnectivityDevice {
             stable_id,
-            protocol: ConnectivityProtocol::Matter,
-            manufacturer: Some("Home Assistant Migration".into()),
-            model: Some(candidate.domain.clone()),
+            protocol,
+            manufacturer: Some(manufacturer.into()),
+            model: Some(model.into()),
             entities: vec![ConnectivityEntity {
                 entity_id,
                 display_name: candidate.display_name,
@@ -278,6 +295,20 @@ fn sanitize_stable_id(value: &str) -> String {
         .collect()
 }
 
+fn parse_connectivity_protocol(value: &str) -> Option<ConnectivityProtocol> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "matter" => Some(ConnectivityProtocol::Matter),
+        "thread" => Some(ConnectivityProtocol::Thread),
+        "zigbee" => Some(ConnectivityProtocol::Zigbee),
+        "zwave" | "z_wave" | "z-wave" => Some(ConnectivityProtocol::ZWave),
+        "ble" | "bluetooth" => Some(ConnectivityProtocol::Ble),
+        "wifi" | "wi-fi" => Some(ConnectivityProtocol::Wifi),
+        "uart" => Some(ConnectivityProtocol::Uart),
+        "esp32_c6" | "esp32-c6" | "esp32c6" => Some(ConnectivityProtocol::Esp32C6),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,7 +350,7 @@ mod tests {
     #[test]
     fn builds_import_plan_for_mappable_entities() {
         let input = r#"[
-            {"entity_id":"light.kitchen","state":"on","attributes":{"friendly_name":"Kitchen Light","device_id":"abc123","area_id":"kitchen"}},
+            {"entity_id":"light.kitchen","state":"on","attributes":{"friendly_name":"Kitchen Light","device_id":"abc123","area_id":"kitchen","genie_protocol":"thread","manufacturer":"GeniePod","model":"Mock Lamp"}},
             {"entity_id":"vacuum.robot","state":"docked","attributes":{}}
         ]"#;
 
@@ -329,6 +360,15 @@ mod tests {
         assert_eq!(plan.report.source, "home_assistant_migration");
         assert_eq!(plan.report.devices.len(), 1);
         assert_eq!(plan.report.devices[0].stable_id, "abc123");
+        assert_eq!(
+            plan.report.devices[0].protocol,
+            ConnectivityProtocol::Thread
+        );
+        assert_eq!(
+            plan.report.devices[0].manufacturer.as_deref(),
+            Some("GeniePod")
+        );
+        assert_eq!(plan.report.devices[0].model.as_deref(), Some("Mock Lamp"));
         assert_eq!(
             plan.report.devices[0].entities[0].area.as_deref(),
             Some("kitchen")

@@ -5,7 +5,7 @@ use genie_home_core::{
     build_home_assistant_import_plan, build_home_assistant_migration_report,
     default_hardware_inventory, default_mcp_surface, demo_runtime, demo_turn_on_kitchen_command,
     domain_support_matrix, mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
-    service_specs,
+    run_mock_home_assistant_port, service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -45,6 +45,7 @@ fn main() -> Result<()> {
         "delete-automation" => handle_delete_automation(args.get(2).map(String::as_str))?,
         "apply-state-report" => handle_state_report()?,
         "mock-hardware-demo" => print_mock_hardware_demo()?,
+        "ha-mock-port-demo" => print_ha_mock_port_demo()?,
         "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
         "ha-import-plan" => print_ha_import_plan(args.get(2).map(String::as_str))?,
@@ -122,6 +123,7 @@ COMMANDS:
     delete-automation  Delete an automation definition by id
     apply-state-report  Read a StateReport JSON from stdin and apply entity states
     mock-hardware-demo  Run a deterministic mock hardware discovery/state/action demo
+    ha-mock-port-demo  Run mock hardware through Home Assistant migration/import
     connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
     ha-import-plan  Print a Genie connectivity import plan from Home Assistant states
@@ -276,6 +278,12 @@ fn print_mock_hardware_demo() -> Result<()> {
             report,
         }),
     }))?)
+}
+
+fn print_ha_mock_port_demo() -> Result<()> {
+    print_stdout_line(&serde_json::to_string_pretty(
+        &run_mock_home_assistant_port(),
+    )?)
 }
 
 fn list_automations() -> Result<()> {

@@ -72,6 +72,8 @@ Implemented now:
 - MCP-facing tool/resource manifest with permission labels for `genie-claw`
 - deterministic mock hardware simulator with Thread, Matter, Zigbee, and BLE
   reference devices for hardware-free tests
+- mock Home Assistant porting harness that converts simulated hardware to
+  HA-style states, runs migration/import, and validates the Genie runtime graph
 - reference systemd packaging for a production local socket service
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
@@ -132,6 +134,7 @@ cargo run -p genie-home-runtime -- services
 cargo run -p genie-home-runtime -- domains
 cargo run -p genie-home-runtime -- hardware
 cargo run -p genie-home-runtime -- mock-hardware-demo
+cargo run -p genie-home-runtime -- ha-mock-port-demo
 cargo run -p genie-home-runtime -- events
 cargo run -p genie-home-runtime -- scenes
 cargo run -p genie-home-runtime -- automations
@@ -175,6 +178,12 @@ Run a deterministic mock hardware flow:
 
 ```bash
 cargo run -p genie-home-runtime -- mock-hardware-demo
+```
+
+Run mock hardware through the Home Assistant migration/import path:
+
+```bash
+cargo run -p genie-home-runtime -- ha-mock-port-demo
 ```
 
 Print the MCP-facing tool/resource manifest:
