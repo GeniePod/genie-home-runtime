@@ -56,6 +56,12 @@ pub fn default_mcp_surface() -> McpSurface {
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
+                "home.list_services",
+                "Return supported Home Assistant-style domain services.",
+                vec![McpPermission::HomeRead],
+                serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+            ),
+            tool(
                 "home.list_scenes",
                 "Return registered scene definitions.",
                 vec![McpPermission::HomeRead],
@@ -86,6 +92,17 @@ pub fn default_mcp_surface() -> McpSurface {
                     "type": "object",
                     "required": ["command"],
                     "properties": {"command": {"type": "object"}},
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
+                "home.call_service",
+                "Call a Home Assistant-style domain service through Genie safety policy.",
+                vec![McpPermission::HomeActuate],
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["call"],
+                    "properties": {"call": {"type": "object"}},
                     "additionalProperties": false
                 }),
             ),
@@ -127,6 +144,12 @@ pub fn default_mcp_surface() -> McpSurface {
                 "genie-home://entities",
                 "entities",
                 "Current Genie Home Runtime entity graph snapshot.",
+                vec![McpPermission::HomeRead],
+            ),
+            resource(
+                "genie-home://services",
+                "services",
+                "Supported Home Assistant-style domain service catalog.",
                 vec![McpPermission::HomeRead],
             ),
             resource(

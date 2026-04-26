@@ -34,5 +34,6 @@ Initial scaffold for Genie Home Runtime.
   schedule, bridge, local API, voice, and agent origins.
 - MCP-facing manifest now labels tools and resources with required permission
   classes.
+- Home Assistant-style service catalog and safety-gated service-call execution.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

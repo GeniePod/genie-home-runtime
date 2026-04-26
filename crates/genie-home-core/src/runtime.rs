@@ -7,6 +7,9 @@ use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 use crate::protocol::{CommandResponse, EntitySnapshot, RuntimeRequest, RuntimeResponse};
 use crate::safety::{SafetyDecision, SafetyPolicy, SafetyReason, evaluate_command};
 use crate::scene::Scene;
+use crate::service::{
+    ServiceActionResult, ServiceCall, ServiceCallResult, service_call_to_commands, service_specs,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
@@ -126,6 +129,9 @@ impl HomeRuntime {
             RuntimeRequest::ListAutomations => RuntimeResponse::Automations {
                 automations: self.automations().cloned().collect(),
             },
+            RuntimeRequest::ListServices => RuntimeResponse::Services {
+                services: service_specs(),
+            },
             RuntimeRequest::Audit { limit } => RuntimeResponse::Audit {
                 entries: self.recent_audit(limit.unwrap_or(20)),
             },
@@ -150,6 +156,12 @@ impl HomeRuntime {
                     },
                 }
             }
+            RuntimeRequest::CallService { call } => match self.call_service(call) {
+                Ok(result) => RuntimeResponse::ServiceCall { result },
+                Err(err) => RuntimeResponse::Error {
+                    error: err.to_string(),
+                },
+            },
             RuntimeRequest::ApplyConnectivityReport { report } => {
                 let result = self.apply_connectivity_report(report);
                 RuntimeResponse::ConnectivityApplied { result }
@@ -213,6 +225,43 @@ impl HomeRuntime {
         }
     }
 
+    pub fn call_service(
+        &mut self,
+        call: ServiceCall,
+    ) -> Result<ServiceCallResult, crate::ServiceCallError> {
+        let commands = service_call_to_commands(&self.graph, &call)?;
+        let mut results = Vec::new();
+        let mut blocked = false;
+        for command in &commands {
+            let decision = self.evaluate_for_execution(command);
+            if !decision.allowed {
+                blocked = true;
+            }
+            results.push(ServiceActionResult {
+                entity_id: command.action.target.entity_id.clone(),
+                executed: false,
+                decision,
+            });
+        }
+
+        if !blocked {
+            for (index, command) in commands.into_iter().enumerate() {
+                let decision = self.execute(command);
+                results[index].executed = decision.allowed;
+                results[index].decision = decision;
+            }
+        }
+
+        let executed = results.iter().filter(|result| result.executed).count();
+        Ok(ServiceCallResult {
+            domain: call.domain,
+            service: call.service,
+            targets: results.len(),
+            executed,
+            results,
+        })
+    }
+
     pub fn run_automation_tick(&mut self, now_hh_mm: String) -> AutomationTickResult {
         let automations = self.automations().cloned().collect::<Vec<_>>();
         let mut result = AutomationTickResult {
@@ -235,11 +284,7 @@ impl HomeRuntime {
             let mut blocked = None;
             for action in &automation.actions {
                 let command = HomeCommand::new(CommandOrigin::Automation, action.clone());
-                let decision = if action.kind == HomeActionKind::ActivateScene {
-                    self.evaluate_scene_command(&command)
-                } else {
-                    self.evaluate(&command)
-                };
+                let decision = self.evaluate_for_execution(&command);
                 if !decision.allowed {
                     blocked = Some(decision);
                     break;
@@ -273,6 +318,14 @@ impl HomeRuntime {
                 .map(|entity| &entity.state == state)
                 .unwrap_or(false),
         })
+    }
+
+    fn evaluate_for_execution(&self, command: &HomeCommand) -> SafetyDecision {
+        if command.action.kind == HomeActionKind::ActivateScene {
+            self.evaluate_scene_command(command)
+        } else {
+            self.evaluate(command)
+        }
     }
 
     fn apply_state_change(&mut self, command: &HomeCommand) {
@@ -634,6 +687,57 @@ mod tests {
         let result = runtime.run_automation_tick("12:00".into());
 
         assert_eq!(result.blocked.len(), 1);
+        assert_eq!(
+            runtime.graph().get(&light_id).unwrap().state,
+            EntityState::Off
+        );
+        assert_eq!(
+            runtime.graph().get(&lock_id).unwrap().state,
+            EntityState::Locked
+        );
+    }
+
+    #[test]
+    fn service_call_executes_supported_domain_service() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut runtime = demo_runtime();
+        let result = runtime
+            .call_service(ServiceCall {
+                domain: "light".into(),
+                service: "turn_on".into(),
+                target: crate::ServiceTarget {
+                    entity_ids: vec![id.clone()],
+                },
+                data: serde_json::Value::Null,
+                origin: CommandOrigin::LocalApi,
+                confirmed: false,
+            })
+            .unwrap();
+
+        assert_eq!(result.executed, 1);
+        assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::On);
+    }
+
+    #[test]
+    fn service_call_prevents_partial_multi_target_execution() {
+        let light_id = EntityId::new("light.kitchen").unwrap();
+        let lock_id = EntityId::new("lock.front_door").unwrap();
+        let mut runtime = demo_runtime();
+        let result = runtime
+            .call_service(ServiceCall {
+                domain: "lock".into(),
+                service: "unlock".into(),
+                target: crate::ServiceTarget {
+                    entity_ids: vec![lock_id.clone()],
+                },
+                data: serde_json::Value::Null,
+                origin: CommandOrigin::LocalApi,
+                confirmed: false,
+            })
+            .unwrap();
+
+        assert_eq!(result.executed, 0);
+        assert!(!result.results[0].decision.allowed);
         assert_eq!(
             runtime.graph().get(&light_id).unwrap().state,
             EntityState::Off

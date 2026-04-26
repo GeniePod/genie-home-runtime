@@ -92,11 +92,14 @@ The first stable boundary is JSON-shaped and intentionally small:
 
 - `status`: runtime health and safety policy summary
 - `list_entities`: current entity snapshots
+- `list_services`: supported Home Assistant-style domain services
 - `list_scenes`: registered scene definitions
 - `list_automations`: registered automation definitions
 - `audit`: recent runtime decisions
 - `evaluate`: return a safety decision without mutating state
 - `execute`: apply the command only if the deterministic safety policy allows it
+- `call_service`: translate an HA-style domain service call into safety-gated
+  Genie actions
 - `run_automation_tick`: evaluate local automations for a scheduler tick
 
 `evaluate` is the preferred first call from `genie-claw` when it needs to ask
@@ -171,6 +174,13 @@ Automations are modeled as enabled rules with explicit triggers, conditions,
 and actions. The first scheduler boundary is an HH:MM tick. Matching
 automations evaluate all actions before mutating state, so a blocked nested
 action prevents partial execution.
+
+Domain services mirror the parts of Home Assistant that are useful for
+migration and user familiarity: `light.turn_on`, `lock.unlock`,
+`cover.open_cover`, `scene.turn_on`, and similar calls. They are translated into
+Genie `HomeCommand`s and then evaluated by the same safety layer. A multi-target
+service call is all-or-nothing; if any target is blocked, none of the targets
+are mutated.
 
 ## Next Alpha Targets
 

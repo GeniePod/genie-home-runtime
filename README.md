@@ -47,6 +47,7 @@ Implemented now:
 - core entity graph model
 - basic scene model with nested action safety checks
 - basic automation model with scheduler tick execution
+- Home Assistant-style domain service catalog and safety-gated service calls
 - command and action model
 - deterministic safety policy
 - in-memory runtime state
@@ -103,11 +104,14 @@ cargo test --workspace
 cargo run -p genie-home-runtime -- status
 cargo run -p genie-home-runtime -- demo
 cargo run -p genie-home-runtime -- entities
+cargo run -p genie-home-runtime -- services
 cargo run -p genie-home-runtime -- scenes
 cargo run -p genie-home-runtime -- automations
 cargo run -p genie-home-runtime -- automation-tick 23:00
 echo '{"origin":"voice","action":{"target":{"entity_id":"light.kitchen","confidence":1.0},"kind":"turn_on","value":null},"confirmed":false,"reason":null}' \
   | cargo run -p genie-home-runtime -- evaluate
+echo '{"domain":"light","service":"turn_on","target":{"entity_ids":["light.kitchen"]},"data":{},"origin":"local_api","confirmed":false}' \
+  | cargo run -p genie-home-runtime -- call-service
 ```
 
 Run the local runtime socket API:

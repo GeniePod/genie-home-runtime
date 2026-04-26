@@ -14,6 +14,7 @@ pub mod protocol;
 pub mod runtime;
 pub mod safety;
 pub mod scene;
+pub mod service;
 
 pub use automation::{
     Automation, AutomationBlock, AutomationCondition, AutomationTickResult, AutomationTrigger,
@@ -37,3 +38,7 @@ pub use runtime::{
 };
 pub use safety::{SafetyDecision, SafetyPolicy, SafetyReason};
 pub use scene::Scene;
+pub use service::{
+    ServiceActionResult, ServiceCall, ServiceCallError, ServiceCallResult, ServiceSpec,
+    ServiceTarget, service_call_to_commands, service_specs,
+};

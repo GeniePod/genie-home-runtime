@@ -2,7 +2,7 @@ use anyhow::Result;
 use genie_home_core::{
     AuditEntry, ConnectivityReport, Entity, RuntimeRequest, RuntimeResponse,
     build_home_assistant_migration_report, default_mcp_surface, demo_runtime,
-    demo_turn_on_kitchen_command, parse_home_assistant_entities_json,
+    demo_turn_on_kitchen_command, parse_home_assistant_entities_json, service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -21,6 +21,7 @@ fn main() -> Result<()> {
         "status" => print_status()?,
         "demo" => run_demo()?,
         "entities" => list_entities()?,
+        "services" => list_services()?,
         "scenes" => list_scenes()?,
         "automations" => list_automations()?,
         "automation-tick" => {
@@ -28,6 +29,7 @@ fn main() -> Result<()> {
         }
         "evaluate" => handle_json_request(false)?,
         "execute" => handle_json_request(true)?,
+        "call-service" => handle_service_call()?,
         "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
         "mcp-manifest" => print_mcp_manifest()?,
@@ -79,11 +81,13 @@ COMMANDS:
     status    Print demo runtime status
     demo      Run an in-memory safety/action demo
     entities  Print demo entity graph
+    services  Print supported HA-style domain services
     scenes    Print demo scenes
     automations  Print demo automations
     automation-tick  Run demo automations for HH:MM
     evaluate  Read a HomeCommand JSON from stdin and evaluate without executing
     execute   Read a HomeCommand JSON from stdin and execute if allowed
+    call-service  Read a ServiceCall JSON from stdin and execute if allowed
     connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
     mcp-manifest  Print the local MCP-facing tool/resource manifest
@@ -112,9 +116,22 @@ fn list_entities() -> Result<()> {
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
+fn list_services() -> Result<()> {
+    print_stdout_line(&serde_json::to_string_pretty(&service_specs())?)
+}
+
 fn list_scenes() -> Result<()> {
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::ListScenes);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn handle_service_call() -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let call = serde_json::from_str(&input)?;
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::CallService { call });
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
@@ -377,6 +394,7 @@ fn serialize_runtime_response(response: &RuntimeResponse) -> String {
 
 fn response_persists_entities(response: &RuntimeResponse) -> bool {
     matches!(response, RuntimeResponse::Command { result } if result.executed)
+        || matches!(response, RuntimeResponse::ServiceCall { result } if result.executed > 0)
         || matches!(response, RuntimeResponse::ConnectivityApplied { result } if result.entities_upserted > 0)
         || matches!(response, RuntimeResponse::AutomationTick { result } if result.actions_executed > 0)
 }
@@ -551,6 +569,21 @@ mod tests {
                 automations_triggered: 1,
                 actions_executed: 1,
                 blocked: Vec::new(),
+            },
+        };
+
+        assert!(response_persists_entities(&response));
+    }
+
+    #[test]
+    fn service_call_response_triggers_state_persistence() {
+        let response = RuntimeResponse::ServiceCall {
+            result: genie_home_core::ServiceCallResult {
+                domain: "light".into(),
+                service: "turn_on".into(),
+                targets: 1,
+                executed: 1,
+                results: Vec::new(),
             },
         };
 
