@@ -12,5 +12,7 @@ Initial scaffold for Genie Home Runtime.
   unavailable state, unsupported capabilities, critical targets, and sensitive
   voice/agent commands.
 - CLI status/demo binary.
+- JSON runtime request/response contract for status, entity listing, command
+  evaluation, and command execution.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

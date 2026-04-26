@@ -49,6 +49,7 @@ Implemented now:
 - deterministic safety policy
 - in-memory runtime state
 - appendable audit-entry model
+- JSON request/response contract for status, entity listing, evaluate, and execute
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
 
@@ -92,4 +93,7 @@ git clone --depth 1 https://github.com/home-assistant/core.git reference/home-as
 cargo test --workspace
 cargo run -p genie-home-runtime -- status
 cargo run -p genie-home-runtime -- demo
+cargo run -p genie-home-runtime -- entities
+echo '{"origin":"voice","action":{"target":{"entity_id":"light.kitchen","confidence":1.0},"kind":"turn_on","value":null},"confirmed":false,"reason":null}' \
+  | cargo run -p genie-home-runtime -- evaluate
 ```

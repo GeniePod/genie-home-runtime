@@ -1,10 +1,11 @@
-use crate::command::{HomeActionKind, HomeCommand};
-use crate::entity::{Entity, EntityGraph, EntityState};
+use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
+use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
+use crate::protocol::{CommandResponse, EntitySnapshot, RuntimeRequest, RuntimeResponse};
 use crate::safety::{SafetyDecision, SafetyPolicy, evaluate_command};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeStatus {
     pub entity_count: usize,
     pub audit_count: usize,
@@ -75,6 +76,35 @@ impl HomeRuntime {
         decision
     }
 
+    pub fn handle_request(&mut self, request: RuntimeRequest) -> RuntimeResponse {
+        match request {
+            RuntimeRequest::Status => RuntimeResponse::Status {
+                status: self.status(),
+            },
+            RuntimeRequest::ListEntities => RuntimeResponse::Entities {
+                entities: self.graph.entities().map(EntitySnapshot::from).collect(),
+            },
+            RuntimeRequest::Evaluate { command } => {
+                let decision = self.evaluate(&command);
+                RuntimeResponse::Command {
+                    result: CommandResponse {
+                        decision,
+                        executed: false,
+                    },
+                }
+            }
+            RuntimeRequest::Execute { command } => {
+                let decision = self.execute(command);
+                RuntimeResponse::Command {
+                    result: CommandResponse {
+                        executed: decision.allowed,
+                        decision,
+                    },
+                }
+            }
+        }
+    }
+
     fn apply_state_change(&mut self, command: &HomeCommand) {
         let Some(current) = self.graph.get(&command.action.target.entity_id).cloned() else {
             return;
@@ -97,11 +127,42 @@ impl HomeRuntime {
     }
 }
 
+pub fn demo_runtime() -> HomeRuntime {
+    let mut runtime = HomeRuntime::with_default_policy();
+    let kitchen_light = EntityId::new("light.kitchen").expect("valid demo entity id");
+    let front_door = EntityId::new("lock.front_door").expect("valid demo entity id");
+    runtime.upsert_entity(
+        Entity::new(kitchen_light, "Kitchen Light")
+            .with_area("kitchen")
+            .with_state(EntityState::Off)
+            .with_capability(Capability::Power),
+    );
+    runtime.upsert_entity(
+        Entity::new(front_door, "Front Door")
+            .with_area("entry")
+            .with_state(EntityState::Locked)
+            .with_capability(Capability::Lock),
+    );
+    runtime
+}
+
+pub fn demo_turn_on_kitchen_command() -> HomeCommand {
+    HomeCommand::new(
+        CommandOrigin::Voice,
+        HomeAction {
+            target: TargetSelector::exact(
+                EntityId::new("light.kitchen").expect("valid demo entity id"),
+            ),
+            kind: HomeActionKind::TurnOn,
+            value: None,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::{CommandOrigin, HomeAction, TargetSelector};
-    use crate::entity::{Capability, EntityId};
+    use crate::entity::EntityId;
 
     #[test]
     fn executes_allowed_action_and_records_audit() {
@@ -122,6 +183,39 @@ mod tests {
         ));
 
         assert!(decision.allowed);
+        assert_eq!(runtime.audit().len(), 1);
+        assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::On);
+    }
+
+    #[test]
+    fn handle_evaluate_request_does_not_mutate_state() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut runtime = demo_runtime();
+        let response = runtime.handle_request(RuntimeRequest::Evaluate {
+            command: demo_turn_on_kitchen_command(),
+        });
+
+        let RuntimeResponse::Command { result } = response else {
+            panic!("expected command response");
+        };
+        assert!(result.decision.allowed);
+        assert!(!result.executed);
+        assert_eq!(runtime.audit().len(), 0);
+        assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::Off);
+    }
+
+    #[test]
+    fn handle_execute_request_mutates_state_and_audits() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut runtime = demo_runtime();
+        let response = runtime.handle_request(RuntimeRequest::Execute {
+            command: demo_turn_on_kitchen_command(),
+        });
+
+        let RuntimeResponse::Command { result } = response else {
+            panic!("expected command response");
+        };
+        assert!(result.executed);
         assert_eq!(runtime.audit().len(), 1);
         assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::On);
     }

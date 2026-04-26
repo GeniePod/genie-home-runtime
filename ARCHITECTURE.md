@@ -84,6 +84,19 @@ permanent dependency:
 - `genie-home-core`: entity graph, command model, safety policy, runtime state.
 - `genie-home-runtime`: executable runtime shell and future API/MCP process.
 
+## Agent Boundary Contract
+
+The first stable boundary is JSON-shaped and intentionally small:
+
+- `status`: runtime health and safety policy summary
+- `list_entities`: current entity snapshots
+- `evaluate`: return a safety decision without mutating state
+- `execute`: apply the command only if the deterministic safety policy allows it
+
+`evaluate` is the preferred first call from `genie-claw` when it needs to ask
+"can this physical action happen?" before presenting confirmation UI or sending
+an execution request.
+
 ## Next Alpha Targets
 
 - persisted SQLite state/audit log
