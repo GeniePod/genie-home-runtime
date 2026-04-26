@@ -113,6 +113,8 @@ The first stable boundary is JSON-shaped and intentionally small:
 - `apply_state_report`: apply GenieOS state updates for already-discovered
   entities
 - `run_automation_tick`: evaluate local automations for a scheduler tick
+- `run_scheduler_window`: bounded catch-up replay for missed HH:MM ticks after
+  restart or downtime
 
 `evaluate` is the preferred first call from `genie-claw` when it needs to ask
 "can this physical action happen?" before presenting confirmation UI or sending
@@ -221,6 +223,12 @@ Automations are modeled as enabled rules with explicit triggers, conditions,
 and actions. The first scheduler boundary is an HH:MM tick. Matching
 automations evaluate all actions before mutating state, so a blocked nested
 action prevents partial execution.
+
+Scheduler catch-up is bounded and deterministic. A caller can request a
+`from_hh_mm` to `to_hh_mm` replay window with either `skip_missed` or
+`run_due_ticks` policy and a maximum tick count. This is not a full calendar
+engine yet, but it prevents restarts from silently losing known HH:MM automation
+opportunities.
 
 Scene and automation configuration is also safety disciplined. Upsert requests
 are applied to a candidate runtime first and must pass validation before the

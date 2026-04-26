@@ -1,8 +1,9 @@
 use crate::{
     AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
     Device, DomainSupport, Entity, EntityId, HardwareInventory, HomeCommand, RuntimeEvent,
-    RuntimeStatus, SafetyDecision, Scene, ServiceCall, ServiceCallResult, ServiceSpec,
-    StateApplyResult, StateReport, ValidationReport,
+    RuntimeStatus, SafetyDecision, Scene, SchedulerCatchUpPolicy, SchedulerRunResult,
+    SchedulerWindow, ServiceCall, ServiceCallResult, ServiceSpec, StateApplyResult, StateReport,
+    ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -17,19 +18,47 @@ pub enum RuntimeRequest {
     ListServices,
     ListDomains,
     HardwareInventory,
-    Audit { limit: Option<usize> },
-    Events { limit: Option<usize> },
+    Audit {
+        limit: Option<usize>,
+    },
+    Events {
+        limit: Option<usize>,
+    },
     ListScenes,
-    Evaluate { command: HomeCommand },
-    Execute { command: HomeCommand },
-    CallService { call: ServiceCall },
-    UpsertScene { scene: Scene },
-    DeleteScene { scene_id: EntityId },
-    UpsertAutomation { automation: Automation },
-    DeleteAutomation { automation_id: String },
-    ApplyConnectivityReport { report: ConnectivityReport },
-    ApplyStateReport { report: StateReport },
-    RunAutomationTick { now_hh_mm: String },
+    Evaluate {
+        command: HomeCommand,
+    },
+    Execute {
+        command: HomeCommand,
+    },
+    CallService {
+        call: ServiceCall,
+    },
+    UpsertScene {
+        scene: Scene,
+    },
+    DeleteScene {
+        scene_id: EntityId,
+    },
+    UpsertAutomation {
+        automation: Automation,
+    },
+    DeleteAutomation {
+        automation_id: String,
+    },
+    ApplyConnectivityReport {
+        report: ConnectivityReport,
+    },
+    ApplyStateReport {
+        report: StateReport,
+    },
+    RunAutomationTick {
+        now_hh_mm: String,
+    },
+    RunSchedulerWindow {
+        window: SchedulerWindow,
+        policy: SchedulerCatchUpPolicy,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,6 +88,7 @@ pub enum RuntimeResponse {
     ConnectivityApplied { result: ConnectivityApplyResult },
     StateApplied { result: StateApplyResult },
     AutomationTick { result: AutomationTickResult },
+    SchedulerRun { result: SchedulerRunResult },
     Error { error: String },
 }
 

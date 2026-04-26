@@ -58,3 +58,5 @@ Initial scaffold for Genie Home Runtime.
   runtime graph.
 - Expanded HA-style service/domain coverage for media players, vacuums, alarm
   panels, fan percentage, switch/fan toggles, and cover stop.
+- Bounded scheduler catch-up window for deterministic missed-tick replay after
+  runtime downtime or restart.

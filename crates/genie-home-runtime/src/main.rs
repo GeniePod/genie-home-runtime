@@ -1,10 +1,11 @@
 use anyhow::Result;
 use genie_home_core::{
     AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, HardwareInterface,
-    MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse, Scene, StateReport,
-    build_home_assistant_import_plan, build_home_assistant_migration_report,
-    default_hardware_inventory, default_mcp_surface, demo_runtime, demo_turn_on_kitchen_command,
-    domain_support_matrix, mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
+    MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse, Scene, SchedulerCatchUpPolicy,
+    SchedulerWindow, StateReport, build_home_assistant_import_plan,
+    build_home_assistant_migration_report, default_hardware_inventory, default_mcp_surface,
+    demo_runtime, demo_turn_on_kitchen_command, domain_support_matrix,
+    mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
     run_mock_home_assistant_port, service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
@@ -36,6 +37,10 @@ fn main() -> Result<()> {
         "automation-tick" => {
             run_automation_tick(args.get(2).map(String::as_str).unwrap_or("23:00"))?
         }
+        "scheduler-window" => run_scheduler_window(
+            args.get(2).map(String::as_str).unwrap_or("22:58"),
+            args.get(3).map(String::as_str).unwrap_or("23:01"),
+        )?,
         "evaluate" => handle_json_request(false)?,
         "execute" => handle_json_request(true)?,
         "call-service" => handle_service_call()?,
@@ -114,6 +119,7 @@ COMMANDS:
     scenes    Print demo scenes
     automations  Print demo automations
     automation-tick  Run demo automations for HH:MM
+    scheduler-window  Run catch-up scheduler window FROM_HH:MM TO_HH:MM
     evaluate  Read a HomeCommand JSON from stdin and evaluate without executing
     execute   Read a HomeCommand JSON from stdin and execute if allowed
     call-service  Read a ServiceCall JSON from stdin and execute if allowed
@@ -296,6 +302,18 @@ fn run_automation_tick(now_hh_mm: &str) -> Result<()> {
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::RunAutomationTick {
         now_hh_mm: now_hh_mm.into(),
+    });
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn run_scheduler_window(from_hh_mm: &str, to_hh_mm: &str) -> Result<()> {
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::RunSchedulerWindow {
+        window: SchedulerWindow {
+            from_hh_mm: from_hh_mm.into(),
+            to_hh_mm: to_hh_mm.into(),
+        },
+        policy: SchedulerCatchUpPolicy::default(),
     });
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }

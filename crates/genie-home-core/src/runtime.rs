@@ -15,6 +15,10 @@ use crate::protocol::{
 };
 use crate::safety::{SafetyDecision, SafetyPolicy, SafetyReason, evaluate_command};
 use crate::scene::Scene;
+use crate::scheduler::{
+    SchedulerCatchUpMode, SchedulerCatchUpPolicy, SchedulerRunResult, SchedulerWindow,
+    enumerate_hh_mm_window,
+};
 use crate::service::{
     ServiceActionResult, ServiceCall, ServiceCallResult, domain_support_matrix,
     service_call_to_commands, service_specs,
@@ -238,6 +242,14 @@ impl HomeRuntime {
             RuntimeRequest::RunAutomationTick { now_hh_mm } => {
                 let result = self.run_automation_tick(now_hh_mm);
                 RuntimeResponse::AutomationTick { result }
+            }
+            RuntimeRequest::RunSchedulerWindow { window, policy } => {
+                match self.run_scheduler_window(window, policy) {
+                    Ok(result) => RuntimeResponse::SchedulerRun { result },
+                    Err(err) => RuntimeResponse::Error {
+                        error: err.to_string(),
+                    },
+                }
             }
         }
     }
@@ -547,6 +559,31 @@ impl HomeRuntime {
                 blocked: result.blocked.len(),
             }));
         result
+    }
+
+    pub fn run_scheduler_window(
+        &mut self,
+        window: SchedulerWindow,
+        policy: SchedulerCatchUpPolicy,
+    ) -> Result<SchedulerRunResult, crate::SchedulerWindowError> {
+        let ticks = match policy.mode {
+            SchedulerCatchUpMode::SkipMissed => Vec::new(),
+            SchedulerCatchUpMode::RunDueTicks => enumerate_hh_mm_window(&window, policy.max_ticks)?,
+        };
+        let mut tick_results = Vec::new();
+        for tick in &ticks {
+            let result = self.run_automation_tick(tick.clone());
+            if result.automations_triggered > 0 || !result.blocked.is_empty() {
+                tick_results.push(result);
+            }
+        }
+
+        Ok(SchedulerRunResult {
+            window,
+            policy,
+            ticks_checked: ticks.len(),
+            tick_results,
+        })
     }
 
     fn automation_conditions_pass(&self, conditions: &[AutomationCondition]) -> bool {
@@ -1103,6 +1140,52 @@ mod tests {
         assert_eq!(result.automations_triggered, 1);
         assert_eq!(result.actions_executed, 1);
         assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::Off);
+    }
+
+    #[test]
+    fn scheduler_window_catches_up_due_automation() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut runtime = demo_runtime();
+        runtime.execute(demo_turn_on_kitchen_command());
+
+        let result = runtime
+            .run_scheduler_window(
+                SchedulerWindow {
+                    from_hh_mm: "22:58".into(),
+                    to_hh_mm: "23:01".into(),
+                },
+                SchedulerCatchUpPolicy::default(),
+            )
+            .unwrap();
+
+        assert_eq!(result.ticks_checked, 3);
+        assert_eq!(result.tick_results.len(), 1);
+        assert_eq!(result.tick_results[0].now_hh_mm, "23:00");
+        assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::Off);
+    }
+
+    #[test]
+    fn scheduler_window_can_skip_missed_ticks() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut runtime = demo_runtime();
+        runtime.execute(demo_turn_on_kitchen_command());
+
+        let result = runtime
+            .run_scheduler_window(
+                SchedulerWindow {
+                    from_hh_mm: "22:58".into(),
+                    to_hh_mm: "23:01".into(),
+                },
+                SchedulerCatchUpPolicy {
+                    mode: SchedulerCatchUpMode::SkipMissed,
+                    max_ticks: 120,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(result.ticks_checked, 0);
+        assert!(result.tick_results.is_empty());
+        assert_eq!(runtime.graph().get(&id).unwrap().state, EntityState::On);
     }
 
     #[test]

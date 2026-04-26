@@ -19,6 +19,7 @@ pub mod protocol;
 pub mod runtime;
 pub mod safety;
 pub mod scene;
+pub mod scheduler;
 pub mod service;
 pub mod validation;
 
@@ -60,6 +61,10 @@ pub use runtime::{
 };
 pub use safety::{SafetyDecision, SafetyPolicy, SafetyReason};
 pub use scene::Scene;
+pub use scheduler::{
+    SchedulerCatchUpMode, SchedulerCatchUpPolicy, SchedulerRunResult, SchedulerWindow,
+    SchedulerWindowError, enumerate_hh_mm_window,
+};
 pub use service::{
     DomainSupport, DomainSupportLevel, ServiceActionResult, ServiceCall, ServiceCallError,
     ServiceCallResult, ServiceSpec, ServiceTarget, domain_support_matrix, service_call_to_commands,

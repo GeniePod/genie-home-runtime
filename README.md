@@ -48,6 +48,7 @@ Implemented now:
 - core entity graph model
 - basic scene model with nested action safety checks
 - basic automation model with scheduler tick execution
+- bounded scheduler catch-up window for restart/missed-tick handling
 - validated scene and automation configuration APIs
 - Home Assistant-style domain service catalog and safety-gated service calls
 - home domain support matrix for implemented, read-only, and planned domains
@@ -141,6 +142,7 @@ cargo run -p genie-home-runtime -- events
 cargo run -p genie-home-runtime -- scenes
 cargo run -p genie-home-runtime -- automations
 cargo run -p genie-home-runtime -- automation-tick 23:00
+cargo run -p genie-home-runtime -- scheduler-window 22:58 23:01
 echo '{"origin":"voice","action":{"target":{"entity_id":"light.kitchen","confidence":1.0},"kind":"turn_on","value":null},"confirmed":false,"reason":null}' \
   | cargo run -p genie-home-runtime -- evaluate
 echo '{"domain":"light","service":"turn_on","target":{"entity_ids":["light.kitchen"]},"data":{},"origin":"local_api","confirmed":false}' \
