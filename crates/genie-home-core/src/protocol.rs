@@ -1,9 +1,9 @@
 use crate::{
     AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
-    Device, DomainSupport, Entity, EntityId, HardwareInventory, HomeCommand, RuntimeEvent,
-    RuntimeSnapshot, RuntimeStatus, SafetyDecision, Scene, SchedulerCatchUpPolicy,
-    SchedulerRunResult, SchedulerWindow, ServiceCall, ServiceCallResult, ServiceSpec,
-    SnapshotApplyResult, StateApplyResult, StateReport, ValidationReport,
+    Device, DomainSupport, Entity, EntityId, GenieOsApplyResult, GenieOsMessage, HardwareInventory,
+    HomeCommand, RuntimeEvent, RuntimeSnapshot, RuntimeStatus, SafetyDecision, Scene,
+    SchedulerCatchUpPolicy, SchedulerRunResult, SchedulerWindow, ServiceCall, ServiceCallResult,
+    ServiceSpec, SnapshotApplyResult, StateApplyResult, StateReport, ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -56,6 +56,9 @@ pub enum RuntimeRequest {
     ApplyStateReport {
         report: StateReport,
     },
+    ApplyGenieOsMessage {
+        message: GenieOsMessage,
+    },
     RunAutomationTick {
         now_hh_mm: String,
     },
@@ -93,6 +96,7 @@ pub enum RuntimeResponse {
     ConfigChanged { result: ConfigChangeResult },
     ConnectivityApplied { result: ConnectivityApplyResult },
     StateApplied { result: StateApplyResult },
+    GenieOsApplied { result: GenieOsApplyResult },
     AutomationTick { result: AutomationTickResult },
     SchedulerRun { result: SchedulerRunResult },
     Error { error: String },

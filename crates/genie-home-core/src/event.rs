@@ -44,6 +44,15 @@ pub enum RuntimeEventKind {
         entities_updated: usize,
         unknown_entities: usize,
     },
+    GenieOsHeartbeat {
+        source: String,
+        monotonic_ms: u64,
+    },
+    GenieOsAdapterStatus {
+        source: String,
+        protocol: crate::ConnectivityProtocol,
+        state: crate::HardwareAdapterState,
+    },
     AutomationTick {
         now_hh_mm: String,
         automations_triggered: usize,

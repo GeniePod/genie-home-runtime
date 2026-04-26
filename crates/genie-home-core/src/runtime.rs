@@ -8,6 +8,7 @@ use crate::connectivity::{
 use crate::device::{Device, DeviceId, DeviceRegistry};
 use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 use crate::event::{RuntimeEvent, RuntimeEventKind};
+use crate::genieos::{GenieOsApplyResult, GenieOsMessage};
 use crate::hardware::default_hardware_inventory;
 use crate::protocol::{
     CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot, EntitySnapshot,
@@ -246,6 +247,10 @@ impl HomeRuntime {
                 let result = self.apply_state_report(report);
                 RuntimeResponse::StateApplied { result }
             }
+            RuntimeRequest::ApplyGenieOsMessage { message } => {
+                let result = self.apply_genieos_message(message);
+                RuntimeResponse::GenieOsApplied { result }
+            }
             RuntimeRequest::RunAutomationTick { now_hh_mm } => {
                 let result = self.run_automation_tick(now_hh_mm);
                 RuntimeResponse::AutomationTick { result }
@@ -440,6 +445,45 @@ impl HomeRuntime {
                 unknown_entities: result.unknown_entities.len(),
             }));
         result
+    }
+
+    pub fn apply_genieos_message(&mut self, message: GenieOsMessage) -> GenieOsApplyResult {
+        match message {
+            GenieOsMessage::Heartbeat {
+                source,
+                monotonic_ms,
+            } => {
+                self.events
+                    .push(RuntimeEvent::new(RuntimeEventKind::GenieOsHeartbeat {
+                        source: source.clone(),
+                        monotonic_ms,
+                    }));
+                GenieOsApplyResult::Heartbeat {
+                    source,
+                    monotonic_ms,
+                }
+            }
+            GenieOsMessage::AdapterStatus { source, status } => {
+                self.events
+                    .push(RuntimeEvent::new(RuntimeEventKind::GenieOsAdapterStatus {
+                        source: source.clone(),
+                        protocol: status.protocol,
+                        state: status.state,
+                    }));
+                GenieOsApplyResult::AdapterStatus {
+                    source,
+                    accepted: true,
+                }
+            }
+            GenieOsMessage::ConnectivityReport { report } => {
+                GenieOsApplyResult::ConnectivityApplied {
+                    result: self.apply_connectivity_report(report),
+                }
+            }
+            GenieOsMessage::StateReport { report } => GenieOsApplyResult::StateApplied {
+                result: self.apply_state_report(report),
+            },
+        }
     }
 
     pub fn configure_scene(&mut self, scene: Scene) -> ConfigChangeResult {
@@ -1145,6 +1189,24 @@ mod tests {
         assert_eq!(
             runtime.graph().get(&kitchen).unwrap().state,
             EntityState::On
+        );
+    }
+
+    #[test]
+    fn applies_genieos_message_boundary() {
+        let mut runtime = HomeRuntime::with_default_policy();
+        let result = runtime.apply_genieos_message(GenieOsMessage::ConnectivityReport {
+            report: ConnectivityReport::esp32c6_thread_demo().unwrap(),
+        });
+
+        let GenieOsApplyResult::ConnectivityApplied { result } = result else {
+            panic!("expected connectivity result");
+        };
+        assert_eq!(result.entities_upserted, 1);
+        assert!(
+            runtime
+                .graph()
+                .contains(&EntityId::new("light.thread_demo").unwrap())
         );
     }
 

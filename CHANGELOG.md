@@ -63,3 +63,5 @@ Initial scaffold for Genie Home Runtime.
 - Versioned runtime snapshot export/import with validation before restore.
 - Local MCP-style stdio JSON-RPC bridge for manifest discovery and `tools/call`
   execution against runtime requests.
+- Normalized GenieOS adapter message boundary for heartbeat, adapter status,
+  connectivity discovery, and hardware-originated state reports.

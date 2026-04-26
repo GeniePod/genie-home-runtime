@@ -218,6 +218,17 @@ pub fn default_mcp_surface() -> McpSurface {
                 }),
             ),
             tool(
+                "home.apply_genieos_message",
+                "Apply a normalized GenieOS adapter message.",
+                vec![McpPermission::ConnectivityWrite],
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["message"],
+                    "properties": {"message": {"type": "object"}},
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
                 "home.run_automation_tick",
                 "Run local automation evaluation for a scheduler HH:MM tick.",
                 vec![McpPermission::AutomationRun],

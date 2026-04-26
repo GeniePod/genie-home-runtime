@@ -1,11 +1,11 @@
 use anyhow::Result;
 use genie_home_core::{
-    AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, HardwareInterface,
-    HomeRuntime, MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse, RuntimeSnapshot,
-    Scene, SchedulerCatchUpPolicy, SchedulerWindow, StateReport, build_home_assistant_import_plan,
-    build_home_assistant_migration_report, default_hardware_inventory, default_mcp_surface,
-    demo_runtime, demo_turn_on_kitchen_command, domain_support_matrix,
-    mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
+    AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, GenieOsMessage,
+    HardwareInterface, HomeRuntime, MockHardwareBus, RuntimeEvent, RuntimeRequest, RuntimeResponse,
+    RuntimeSnapshot, Scene, SchedulerCatchUpPolicy, SchedulerWindow, StateReport,
+    build_home_assistant_import_plan, build_home_assistant_migration_report,
+    default_hardware_inventory, default_mcp_surface, demo_runtime, demo_turn_on_kitchen_command,
+    domain_support_matrix, mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
     run_mock_home_assistant_port, service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
@@ -51,6 +51,7 @@ fn main() -> Result<()> {
         "upsert-automation" => handle_upsert_automation()?,
         "delete-automation" => handle_delete_automation(args.get(2).map(String::as_str))?,
         "apply-state-report" => handle_state_report()?,
+        "apply-genieos-message" => handle_genieos_message()?,
         "mock-hardware-demo" => print_mock_hardware_demo()?,
         "ha-mock-port-demo" => print_ha_mock_port_demo()?,
         "connectivity-demo" => print_connectivity_demo()?,
@@ -133,6 +134,7 @@ COMMANDS:
     upsert-automation  Read an Automation JSON from stdin and validate/install it
     delete-automation  Delete an automation definition by id
     apply-state-report  Read a StateReport JSON from stdin and apply entity states
+    apply-genieos-message  Read a GenieOsMessage JSON from stdin and apply it
     mock-hardware-demo  Run a deterministic mock hardware discovery/state/action demo
     ha-mock-port-demo  Run mock hardware through Home Assistant migration/import
     connectivity-demo  Print a sample GenieOS connectivity report request
@@ -278,6 +280,15 @@ fn handle_state_report() -> Result<()> {
     let report: StateReport = serde_json::from_str(&input)?;
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::ApplyStateReport { report });
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn handle_genieos_message() -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let message: GenieOsMessage = serde_json::from_str(&input)?;
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::ApplyGenieOsMessage { message });
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
@@ -543,6 +554,9 @@ fn mcp_tool_to_runtime_request(params: &serde_json::Value) -> Result<RuntimeRequ
         }),
         "home.apply_state_report" => Ok(RuntimeRequest::ApplyStateReport {
             report: required_argument(arguments, "report")?,
+        }),
+        "home.apply_genieos_message" => Ok(RuntimeRequest::ApplyGenieOsMessage {
+            message: required_argument(arguments, "message")?,
         }),
         "home.run_automation_tick" => Ok(RuntimeRequest::RunAutomationTick {
             now_hh_mm: required_argument(arguments, "now_hh_mm")?,
@@ -927,7 +941,20 @@ fn response_persists_entities(response: &RuntimeResponse) -> bool {
         || matches!(response, RuntimeResponse::SnapshotApplied { result } if result.changed)
         || matches!(response, RuntimeResponse::ConnectivityApplied { result } if result.entities_upserted > 0)
         || matches!(response, RuntimeResponse::StateApplied { result } if result.entities_updated > 0)
+        || genieos_response_persists(response)
         || matches!(response, RuntimeResponse::AutomationTick { result } if result.actions_executed > 0)
+}
+
+fn genieos_response_persists(response: &RuntimeResponse) -> bool {
+    match response {
+        RuntimeResponse::GenieOsApplied {
+            result: genie_home_core::GenieOsApplyResult::ConnectivityApplied { result },
+        } => result.entities_upserted > 0,
+        RuntimeResponse::GenieOsApplied {
+            result: genie_home_core::GenieOsApplyResult::StateApplied { result },
+        } => result.entities_updated > 0,
+        _ => false,
+    }
 }
 
 struct SqliteStateStore {

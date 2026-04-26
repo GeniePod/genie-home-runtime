@@ -114,6 +114,8 @@ The first stable boundary is JSON-shaped and intentionally small:
   definitions
 - `apply_state_report`: apply GenieOS state updates for already-discovered
   entities
+- `apply_genieos_message`: apply the normalized GenieOS adapter envelope for
+  heartbeat, adapter status, connectivity discovery, and state reports
 - `run_automation_tick`: evaluate local automations for a scheduler tick
 - `run_scheduler_window`: bounded catch-up replay for missed HH:MM ticks after
   restart or downtime
@@ -191,6 +193,13 @@ state changes. The runtime only updates known entities; unknown entity updates
 are reported back instead of silently creating new controls. This keeps
 discovery explicit and prevents malformed hardware messages from expanding the
 actuation surface.
+
+`GenieOsMessage` is the preferred driver-facing envelope for GenieOS adapters.
+It carries adapter heartbeats, adapter status, discovery reports, and state
+reports through one typed boundary. The runtime records heartbeats/status as
+events and routes discovery/state payloads through the same explicit
+connectivity and state-report handlers, so the driver path cannot bypass entity
+registration or safety-owned actuation.
 
 For development and CI, `genie-home-core::mock_hardware` provides a deterministic
 hardware interface. The reference mock home exposes Thread, Matter, Zigbee, and
