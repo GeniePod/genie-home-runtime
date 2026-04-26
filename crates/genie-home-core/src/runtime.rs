@@ -8,7 +8,8 @@ use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 use crate::event::{RuntimeEvent, RuntimeEventKind};
 use crate::hardware::default_hardware_inventory;
 use crate::protocol::{
-    CommandResponse, DeviceSnapshot, EntitySnapshot, RuntimeRequest, RuntimeResponse,
+    CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot, EntitySnapshot,
+    RuntimeRequest, RuntimeResponse,
 };
 use crate::safety::{SafetyDecision, SafetyPolicy, SafetyReason, evaluate_command};
 use crate::scene::Scene;
@@ -212,6 +213,18 @@ impl HomeRuntime {
                     error: err.to_string(),
                 },
             },
+            RuntimeRequest::UpsertScene { scene } => RuntimeResponse::ConfigChanged {
+                result: self.configure_scene(scene),
+            },
+            RuntimeRequest::DeleteScene { scene_id } => RuntimeResponse::ConfigChanged {
+                result: self.delete_scene(&scene_id),
+            },
+            RuntimeRequest::UpsertAutomation { automation } => RuntimeResponse::ConfigChanged {
+                result: self.configure_automation(automation),
+            },
+            RuntimeRequest::DeleteAutomation { automation_id } => RuntimeResponse::ConfigChanged {
+                result: self.delete_automation(&automation_id),
+            },
             RuntimeRequest::ApplyConnectivityReport { report } => {
                 let result = self.apply_connectivity_report(report);
                 RuntimeResponse::ConnectivityApplied { result }
@@ -320,6 +333,72 @@ impl HomeRuntime {
                 entities_upserted: result.entities_upserted,
             }));
         result
+    }
+
+    pub fn configure_scene(&mut self, scene: Scene) -> ConfigChangeResult {
+        let id = scene.id.to_string();
+        let mut candidate = self.clone();
+        candidate.ensure_scene_entity(&scene);
+        candidate.upsert_scene(scene.clone());
+        let report = validate_runtime(&candidate);
+        if report.ok {
+            self.ensure_scene_entity(&scene);
+            self.upsert_scene(scene);
+            ConfigChangeResult {
+                resource: ConfigResource::Scene,
+                id,
+                changed: true,
+                validation: Some(report),
+            }
+        } else {
+            ConfigChangeResult {
+                resource: ConfigResource::Scene,
+                id,
+                changed: false,
+                validation: Some(report),
+            }
+        }
+    }
+
+    pub fn delete_scene(&mut self, scene_id: &EntityId) -> ConfigChangeResult {
+        ConfigChangeResult {
+            resource: ConfigResource::Scene,
+            id: scene_id.to_string(),
+            changed: self.scenes.remove(scene_id).is_some(),
+            validation: None,
+        }
+    }
+
+    pub fn configure_automation(&mut self, automation: Automation) -> ConfigChangeResult {
+        let id = automation.id.clone();
+        let mut candidate = self.clone();
+        candidate.upsert_automation(automation.clone());
+        let report = validate_runtime(&candidate);
+        if report.ok {
+            self.upsert_automation(automation);
+            ConfigChangeResult {
+                resource: ConfigResource::Automation,
+                id,
+                changed: true,
+                validation: Some(report),
+            }
+        } else {
+            ConfigChangeResult {
+                resource: ConfigResource::Automation,
+                id,
+                changed: false,
+                validation: Some(report),
+            }
+        }
+    }
+
+    pub fn delete_automation(&mut self, automation_id: &str) -> ConfigChangeResult {
+        ConfigChangeResult {
+            resource: ConfigResource::Automation,
+            id: automation_id.into(),
+            changed: self.automations.remove(automation_id).is_some(),
+            validation: None,
+        }
     }
 
     pub fn call_service(
@@ -438,6 +517,19 @@ impl HomeRuntime {
         } else {
             self.evaluate(command)
         }
+    }
+
+    fn ensure_scene_entity(&mut self, scene: &Scene) {
+        let entity = match self.graph.get(&scene.id) {
+            Some(existing) => existing
+                .clone()
+                .with_state(existing.state.clone())
+                .with_capability(Capability::SceneActivation),
+            None => Entity::new(scene.id.clone(), scene.display_name.clone())
+                .with_state(EntityState::Off)
+                .with_capability(Capability::SceneActivation),
+        };
+        self.graph.upsert(entity);
     }
 
     fn apply_state_change(&mut self, command: &HomeCommand) {
@@ -717,6 +809,83 @@ mod tests {
         };
         assert!(domains.iter().any(|domain| domain.domain == "light"));
         assert!(domains.iter().any(|domain| domain.domain == "sensor"));
+    }
+
+    #[test]
+    fn upsert_scene_request_creates_backing_scene_entity() {
+        let mut runtime = demo_runtime();
+        let scene_id = EntityId::new("scene.bedtime").unwrap();
+        let target = EntityId::new("light.kitchen").unwrap();
+        let scene = Scene::new(scene_id.clone(), "Bedtime").with_action(HomeAction {
+            target: TargetSelector::exact(target),
+            kind: HomeActionKind::TurnOff,
+            value: None,
+        });
+
+        let response = runtime.handle_request(RuntimeRequest::UpsertScene { scene });
+
+        let RuntimeResponse::ConfigChanged { result } = response else {
+            panic!("expected config response");
+        };
+        assert!(result.changed);
+        assert!(result.validation.unwrap().ok);
+        assert!(runtime.scenes().any(|scene| scene.id == scene_id));
+        assert!(
+            runtime
+                .graph()
+                .get(&scene_id)
+                .unwrap()
+                .capabilities
+                .contains(&Capability::SceneActivation)
+        );
+    }
+
+    #[test]
+    fn upsert_automation_request_rejects_missing_target() {
+        let mut runtime = demo_runtime();
+        let automation = Automation::new(
+            "automation.bad_target",
+            "Bad Target",
+            AutomationTrigger::TimeOfDay {
+                hh_mm: "07:00".into(),
+            },
+        )
+        .with_action(HomeAction {
+            target: TargetSelector::exact(EntityId::new("light.missing").unwrap()),
+            kind: HomeActionKind::TurnOn,
+            value: None,
+        });
+
+        let response = runtime.handle_request(RuntimeRequest::UpsertAutomation { automation });
+
+        let RuntimeResponse::ConfigChanged { result } = response else {
+            panic!("expected config response");
+        };
+        assert!(!result.changed);
+        assert!(!result.validation.unwrap().ok);
+        assert!(
+            !runtime
+                .automations()
+                .any(|automation| automation.id == "automation.bad_target")
+        );
+    }
+
+    #[test]
+    fn delete_automation_request_removes_existing_definition() {
+        let mut runtime = demo_runtime();
+        let response = runtime.handle_request(RuntimeRequest::DeleteAutomation {
+            automation_id: "automation.kitchen_lights_out".into(),
+        });
+
+        let RuntimeResponse::ConfigChanged { result } = response else {
+            panic!("expected config response");
+        };
+        assert!(result.changed);
+        assert!(
+            !runtime
+                .automations()
+                .any(|automation| { automation.id == "automation.kitchen_lights_out" })
+        );
     }
 
     #[test]

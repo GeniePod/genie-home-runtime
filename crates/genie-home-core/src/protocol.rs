@@ -1,7 +1,8 @@
 use crate::{
     AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
-    Device, DomainSupport, Entity, HardwareInventory, HomeCommand, RuntimeEvent, RuntimeStatus,
-    SafetyDecision, Scene, ServiceCall, ServiceCallResult, ServiceSpec, ValidationReport,
+    Device, DomainSupport, Entity, EntityId, HardwareInventory, HomeCommand, RuntimeEvent,
+    RuntimeStatus, SafetyDecision, Scene, ServiceCall, ServiceCallResult, ServiceSpec,
+    ValidationReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +23,10 @@ pub enum RuntimeRequest {
     Evaluate { command: HomeCommand },
     Execute { command: HomeCommand },
     CallService { call: ServiceCall },
+    UpsertScene { scene: Scene },
+    DeleteScene { scene_id: EntityId },
+    UpsertAutomation { automation: Automation },
+    DeleteAutomation { automation_id: String },
     ApplyConnectivityReport { report: ConnectivityReport },
     RunAutomationTick { now_hh_mm: String },
 }
@@ -49,9 +54,25 @@ pub enum RuntimeResponse {
     Scenes { scenes: Vec<Scene> },
     Command { result: CommandResponse },
     ServiceCall { result: ServiceCallResult },
+    ConfigChanged { result: ConfigChangeResult },
     ConnectivityApplied { result: ConnectivityApplyResult },
     AutomationTick { result: AutomationTickResult },
     Error { error: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeResult {
+    pub resource: ConfigResource,
+    pub id: String,
+    pub changed: bool,
+    pub validation: Option<ValidationReport>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigResource {
+    Scene,
+    Automation,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

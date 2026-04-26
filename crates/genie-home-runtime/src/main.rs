@@ -1,7 +1,7 @@
 use anyhow::Result;
 use genie_home_core::{
-    AuditEntry, Automation, ConnectivityReport, Device, Entity, RuntimeEvent, RuntimeRequest,
-    RuntimeResponse, Scene, build_home_assistant_import_plan,
+    AuditEntry, Automation, ConnectivityReport, Device, Entity, EntityId, RuntimeEvent,
+    RuntimeRequest, RuntimeResponse, Scene, build_home_assistant_import_plan,
     build_home_assistant_migration_report, default_hardware_inventory, default_mcp_surface,
     demo_runtime, demo_turn_on_kitchen_command, domain_support_matrix,
     parse_home_assistant_entities_json, service_specs,
@@ -38,6 +38,10 @@ fn main() -> Result<()> {
         "evaluate" => handle_json_request(false)?,
         "execute" => handle_json_request(true)?,
         "call-service" => handle_service_call()?,
+        "upsert-scene" => handle_upsert_scene()?,
+        "delete-scene" => handle_delete_scene(args.get(2).map(String::as_str))?,
+        "upsert-automation" => handle_upsert_automation()?,
+        "delete-automation" => handle_delete_automation(args.get(2).map(String::as_str))?,
         "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
         "ha-import-plan" => print_ha_import_plan(args.get(2).map(String::as_str))?,
@@ -109,6 +113,10 @@ COMMANDS:
     evaluate  Read a HomeCommand JSON from stdin and evaluate without executing
     execute   Read a HomeCommand JSON from stdin and execute if allowed
     call-service  Read a ServiceCall JSON from stdin and execute if allowed
+    upsert-scene  Read a Scene JSON from stdin and validate/install it
+    delete-scene  Delete a scene definition by entity id
+    upsert-automation  Read an Automation JSON from stdin and validate/install it
+    delete-automation  Delete an automation definition by id
     connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
     ha-import-plan  Print a Genie connectivity import plan from Home Assistant states
@@ -187,6 +195,46 @@ fn handle_service_call() -> Result<()> {
     let call = serde_json::from_str(&input)?;
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::CallService { call });
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn handle_upsert_scene() -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let scene = serde_json::from_str(&input)?;
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::UpsertScene { scene });
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn handle_delete_scene(scene_id: Option<&str>) -> Result<()> {
+    let Some(scene_id) = scene_id else {
+        anyhow::bail!("delete-scene requires a scene entity id")
+    };
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::DeleteScene {
+        scene_id: EntityId::new(scene_id)?,
+    });
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn handle_upsert_automation() -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let automation = serde_json::from_str(&input)?;
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::UpsertAutomation { automation });
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn handle_delete_automation(automation_id: Option<&str>) -> Result<()> {
+    let Some(automation_id) = automation_id else {
+        anyhow::bail!("delete-automation requires an automation id")
+    };
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::DeleteAutomation {
+        automation_id: automation_id.into(),
+    });
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
@@ -590,6 +638,7 @@ fn serialize_runtime_response(response: &RuntimeResponse) -> String {
 fn response_persists_entities(response: &RuntimeResponse) -> bool {
     matches!(response, RuntimeResponse::Command { result } if result.executed)
         || matches!(response, RuntimeResponse::ServiceCall { result } if result.executed > 0)
+        || matches!(response, RuntimeResponse::ConfigChanged { result } if result.changed)
         || matches!(response, RuntimeResponse::ConnectivityApplied { result } if result.entities_upserted > 0)
         || matches!(response, RuntimeResponse::AutomationTick { result } if result.actions_executed > 0)
 }
@@ -938,10 +987,30 @@ mod tests {
     }
 
     #[test]
+    fn config_change_response_triggers_state_persistence() {
+        let response = RuntimeResponse::ConfigChanged {
+            result: genie_home_core::ConfigChangeResult {
+                resource: genie_home_core::ConfigResource::Automation,
+                id: "automation.test".into(),
+                changed: true,
+                validation: None,
+            },
+        };
+
+        assert!(response_persists_entities(&response));
+    }
+
+    #[test]
     fn mcp_manifest_has_home_tools() {
         let surface = default_mcp_surface();
 
         assert!(surface.tools.iter().any(|tool| tool.name == "home.status"));
         assert!(surface.tools.iter().any(|tool| tool.name == "home.execute"));
+        assert!(
+            surface
+                .tools
+                .iter()
+                .any(|tool| tool.name == "home.upsert_scene")
+        );
     }
 }

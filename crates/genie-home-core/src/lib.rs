@@ -42,8 +42,8 @@ pub use migration::{
     build_home_assistant_migration_report, parse_home_assistant_entities_json,
 };
 pub use protocol::{
-    CommandResponse, DeviceSnapshot, EntitySnapshot, ExecuteCommandRequest, RuntimeRequest,
-    RuntimeResponse,
+    CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot, EntitySnapshot,
+    ExecuteCommandRequest, RuntimeRequest, RuntimeResponse,
 };
 pub use runtime::{
     AuditEntry, HomeRuntime, RuntimeStatus, demo_runtime, demo_turn_on_kitchen_command,

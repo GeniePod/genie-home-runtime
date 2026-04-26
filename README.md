@@ -48,6 +48,7 @@ Implemented now:
 - core entity graph model
 - basic scene model with nested action safety checks
 - basic automation model with scheduler tick execution
+- validated scene and automation configuration APIs
 - Home Assistant-style domain service catalog and safety-gated service calls
 - home domain support matrix for implemented, read-only, and planned domains
 - hardware/protocol inventory that explicitly separates runtime support from
@@ -135,6 +136,10 @@ echo '{"origin":"voice","action":{"target":{"entity_id":"light.kitchen","confide
   | cargo run -p genie-home-runtime -- evaluate
 echo '{"domain":"light","service":"turn_on","target":{"entity_ids":["light.kitchen"]},"data":{},"origin":"local_api","confirmed":false}' \
   | cargo run -p genie-home-runtime -- call-service
+echo '{"id":"scene.bedtime","display_name":"Bedtime","actions":[{"target":{"entity_id":"light.kitchen","confidence":1.0},"kind":"turn_off","value":null}]}' \
+  | cargo run -p genie-home-runtime -- upsert-scene
+echo '{"id":"automation.bedtime","display_name":"Bedtime","enabled":true,"trigger":{"time_of_day":{"hh_mm":"23:00"}},"conditions":[],"actions":[{"target":{"entity_id":"light.kitchen","confidence":1.0},"kind":"turn_off","value":null}]}' \
+  | cargo run -p genie-home-runtime -- upsert-automation
 ```
 
 Run the local runtime socket API:

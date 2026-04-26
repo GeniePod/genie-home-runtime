@@ -27,6 +27,7 @@ pub enum McpPermission {
     HomeAuditRead,
     ConnectivityWrite,
     AutomationRun,
+    ConfigWrite,
     SupportRead,
 }
 
@@ -127,6 +128,50 @@ pub fn default_mcp_surface() -> McpSurface {
                     "type": "object",
                     "required": ["call"],
                     "properties": {"call": {"type": "object"}},
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
+                "home.upsert_scene",
+                "Create or update a scene definition after runtime validation.",
+                vec![McpPermission::ConfigWrite],
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["scene"],
+                    "properties": {"scene": {"type": "object"}},
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
+                "home.delete_scene",
+                "Delete a scene definition by entity id.",
+                vec![McpPermission::ConfigWrite],
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["scene_id"],
+                    "properties": {"scene_id": {"type": "string"}},
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
+                "home.upsert_automation",
+                "Create or update an automation definition after runtime validation.",
+                vec![McpPermission::ConfigWrite],
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["automation"],
+                    "properties": {"automation": {"type": "object"}},
+                    "additionalProperties": false
+                }),
+            ),
+            tool(
+                "home.delete_automation",
+                "Delete an automation definition by id.",
+                vec![McpPermission::ConfigWrite],
+                serde_json::json!({
+                    "type": "object",
+                    "required": ["automation_id"],
+                    "properties": {"automation_id": {"type": "string"}},
                     "additionalProperties": false
                 }),
             ),
@@ -286,6 +331,12 @@ mod tests {
                 .tools
                 .iter()
                 .any(|tool| tool.name == "home.hardware_inventory")
+        );
+        assert!(
+            surface
+                .tools
+                .iter()
+                .any(|tool| tool.name == "home.upsert_scene")
         );
         let execute = surface
             .tools

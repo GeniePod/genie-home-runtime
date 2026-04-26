@@ -47,3 +47,5 @@ Initial scaffold for Genie Home Runtime.
   report-boundary ready and radio drivers as GenieOS responsibilities.
 - Domain support matrix API for implemented safety-gated domains, read-only
   state domains, and planned domains.
+- Validated scene and automation configuration APIs, including delete paths and
+  persistence triggers.
