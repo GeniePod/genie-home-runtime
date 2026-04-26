@@ -128,8 +128,9 @@ process. The development default is:
 /tmp/genie-home-runtime-audit.jsonl
 ```
 
-Entity snapshots are persisted in SQLite by the runtime process so a restart
-does not reset known device state. The development default is:
+Device, entity, scene, and automation snapshots are persisted in SQLite by the
+runtime process so a restart does not reset known home state. The development
+default is:
 
 ```text
 /tmp/genie-home-runtime-state.sqlite3

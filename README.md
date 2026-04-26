@@ -58,7 +58,7 @@ Implemented now:
 - appendable audit-entry model
 - JSON request/response contract for status, entity listing, evaluate, and execute
 - local Unix-socket JSON API for `genie-claw` and local tools
-- SQLite entity snapshot persistence for runtime restarts
+- SQLite registry persistence for devices, entities, scenes, and automations
 - JSONL audit persistence for executed runtime decisions
 - local JSON support bundle for field diagnostics
 - Home Assistant states compatibility report for migration planning

@@ -1,8 +1,9 @@
 use anyhow::Result;
 use genie_home_core::{
-    AuditEntry, ConnectivityReport, Device, Entity, RuntimeEvent, RuntimeRequest, RuntimeResponse,
-    build_home_assistant_import_plan, build_home_assistant_migration_report, default_mcp_surface,
-    demo_runtime, demo_turn_on_kitchen_command, parse_home_assistant_entities_json, service_specs,
+    AuditEntry, Automation, ConnectivityReport, Device, Entity, RuntimeEvent, RuntimeRequest,
+    RuntimeResponse, Scene, build_home_assistant_import_plan,
+    build_home_assistant_migration_report, default_mcp_surface, demo_runtime,
+    demo_turn_on_kitchen_command, parse_home_assistant_entities_json, service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -294,6 +295,22 @@ fn serve(
             runtime.upsert_entity(entity);
         }
     }
+    let restored_scenes = state_store.load_scenes()?;
+    if restored_scenes.is_empty() {
+        state_store.save_scenes(runtime.scenes())?;
+    } else {
+        for scene in restored_scenes {
+            runtime.upsert_scene(scene);
+        }
+    }
+    let restored_automations = state_store.load_automations()?;
+    if restored_automations.is_empty() {
+        state_store.save_automations(runtime.automations())?;
+    } else {
+        for automation in restored_automations {
+            runtime.upsert_automation(automation);
+        }
+    }
     let restored = load_audit_entries(audit_log_path)?;
     runtime.restore_audit_entries(restored);
     let restored_events = load_event_entries(event_log_path)?;
@@ -317,6 +334,8 @@ fn serve(
                 if response_persists_entities(&response) {
                     state_store.save_devices(runtime.devices())?;
                     state_store.save_entities(runtime.graph().entities())?;
+                    state_store.save_scenes(runtime.scenes())?;
+                    state_store.save_automations(runtime.automations())?;
                 }
                 let output = serialize_runtime_response(&response);
                 append_new_audit_entries(audit_log_path, runtime.audit_since(audit_start))?;
@@ -453,6 +472,8 @@ fn build_support_bundle(
     let events = load_event_entries(event_log_path)?;
     let devices = load_devices_from_state_db(state_db_path)?;
     let entities = load_entities_from_state_db(state_db_path)?;
+    let scenes = load_scenes_from_state_db(state_db_path)?;
+    let automations = load_automations_from_state_db(state_db_path)?;
     let mut recent_audit = audit.iter().rev().take(20).cloned().collect::<Vec<_>>();
     recent_audit.reverse();
     let mut recent_events = events.iter().rev().take(50).cloned().collect::<Vec<_>>();
@@ -477,6 +498,8 @@ fn build_support_bundle(
         "counts": {
             "devices": devices.len(),
             "entities": entities.len(),
+            "scenes": scenes.len(),
+            "automations": automations.len(),
             "audit_entries": audit.len(),
             "recent_audit_entries": recent_audit.len(),
             "event_entries": events.len(),
@@ -484,6 +507,8 @@ fn build_support_bundle(
         },
         "devices": devices,
         "entities": entities,
+        "scenes": scenes,
+        "automations": automations,
         "recent_audit": recent_audit,
         "recent_events": recent_events,
     }))
@@ -494,6 +519,20 @@ fn load_devices_from_state_db(path: &str) -> Result<Vec<Device>> {
         return Ok(Vec::new());
     }
     SqliteStateStore::open(path)?.load_devices()
+}
+
+fn load_scenes_from_state_db(path: &str) -> Result<Vec<Scene>> {
+    if !Path::new(path).exists() {
+        return Ok(Vec::new());
+    }
+    SqliteStateStore::open(path)?.load_scenes()
+}
+
+fn load_automations_from_state_db(path: &str) -> Result<Vec<Automation>> {
+    if !Path::new(path).exists() {
+        return Ok(Vec::new());
+    }
+    SqliteStateStore::open(path)?.load_automations()
 }
 
 fn load_entities_from_state_db(path: &str) -> Result<Vec<Entity>> {
@@ -560,6 +599,16 @@ impl SqliteStateStore {
                 json TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS scenes (
+                id TEXT PRIMARY KEY NOT NULL,
+                json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS automations (
+                id TEXT PRIMARY KEY NOT NULL,
+                json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             ",
         )?;
         Ok(Self { conn })
@@ -581,6 +630,42 @@ impl SqliteStateStore {
             devices.push(row?);
         }
         Ok(devices)
+    }
+
+    fn load_scenes(&self) -> Result<Vec<Scene>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT json FROM scenes ORDER BY id ASC")?;
+        let rows = stmt.query_map([], |row| {
+            let json: String = row.get(0)?;
+            serde_json::from_str(&json).map_err(|err| {
+                rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(err))
+            })
+        })?;
+
+        let mut scenes = Vec::new();
+        for row in rows {
+            scenes.push(row?);
+        }
+        Ok(scenes)
+    }
+
+    fn load_automations(&self) -> Result<Vec<Automation>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT json FROM automations ORDER BY id ASC")?;
+        let rows = stmt.query_map([], |row| {
+            let json: String = row.get(0)?;
+            serde_json::from_str(&json).map_err(|err| {
+                rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(err))
+            })
+        })?;
+
+        let mut automations = Vec::new();
+        for row in rows {
+            automations.push(row?);
+        }
+        Ok(automations)
     }
 
     fn load_entities(&self) -> Result<Vec<Entity>> {
@@ -615,6 +700,49 @@ impl SqliteStateStore {
                     updated_at = excluded.updated_at
                 ",
                 params![device.id.as_str(), json, updated_at],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn save_scenes<'a>(&mut self, scenes: impl IntoIterator<Item = &'a Scene>) -> Result<()> {
+        let updated_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
+        let tx = self.conn.transaction()?;
+        for scene in scenes {
+            let json = serde_json::to_string(scene)?;
+            tx.execute(
+                "\
+                INSERT INTO scenes (id, json, updated_at)
+                VALUES (?1, ?2, ?3)
+                ON CONFLICT(id) DO UPDATE SET
+                    json = excluded.json,
+                    updated_at = excluded.updated_at
+                ",
+                params![scene.id.as_str(), json, updated_at],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn save_automations<'a>(
+        &mut self,
+        automations: impl IntoIterator<Item = &'a Automation>,
+    ) -> Result<()> {
+        let updated_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
+        let tx = self.conn.transaction()?;
+        for automation in automations {
+            let json = serde_json::to_string(automation)?;
+            tx.execute(
+                "\
+                INSERT INTO automations (id, json, updated_at)
+                VALUES (?1, ?2, ?3)
+                ON CONFLICT(id) DO UPDATE SET
+                    json = excluded.json,
+                    updated_at = excluded.updated_at
+                ",
+                params![automation.id, json, updated_at],
             )?;
         }
         tx.commit()?;
@@ -666,14 +794,20 @@ mod tests {
 
         store.save_devices(runtime.devices()).unwrap();
         store.save_entities(runtime.graph().entities()).unwrap();
+        store.save_scenes(runtime.scenes()).unwrap();
+        store.save_automations(runtime.automations()).unwrap();
         let devices = store.load_devices().unwrap();
         let entities = store.load_entities().unwrap();
+        let scenes = store.load_scenes().unwrap();
+        let automations = store.load_automations().unwrap();
         let kitchen = entities
             .iter()
             .find(|entity| entity.id.as_str() == "light.kitchen")
             .unwrap();
 
         assert_eq!(devices.len(), 2);
+        assert_eq!(scenes.len(), 1);
+        assert_eq!(automations.len(), 1);
         assert_eq!(kitchen.state, EntityState::On);
         let _ = std::fs::remove_file(path);
     }
@@ -699,6 +833,8 @@ mod tests {
         runtime.execute(demo_turn_on_kitchen_command());
         store.save_devices(runtime.devices()).unwrap();
         store.save_entities(runtime.graph().entities()).unwrap();
+        store.save_scenes(runtime.scenes()).unwrap();
+        store.save_automations(runtime.automations()).unwrap();
         append_new_audit_entries(&audit_path, runtime.audit()).unwrap();
         append_new_event_entries(&event_path, runtime.events()).unwrap();
 
@@ -707,6 +843,8 @@ mod tests {
         assert_eq!(bundle["schema"], "genie.home.support_bundle.v1");
         assert_eq!(bundle["counts"]["devices"], 2);
         assert_eq!(bundle["counts"]["entities"], 3);
+        assert_eq!(bundle["counts"]["scenes"], 1);
+        assert_eq!(bundle["counts"]["automations"], 1);
         assert_eq!(bundle["counts"]["audit_entries"], 1);
         assert_eq!(bundle["counts"]["event_entries"], 1);
         assert_eq!(bundle["recent_audit"].as_array().unwrap().len(), 1);

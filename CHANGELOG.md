@@ -40,5 +40,6 @@ Initial scaffold for Genie Home Runtime.
 - Device registry with entity-to-device attribution and SQLite persistence.
 - Runtime validation report for registry, scene, and automation consistency.
 - Home Assistant import plan generation into Genie connectivity reports.
+- SQLite persistence for scene and automation registries.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.
