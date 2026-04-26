@@ -59,9 +59,9 @@ Not implemented yet:
 - scheduler/automation engine
 - MCP server
 - Matter/Thread/BLE integrations
-- Home Assistant bridge adapter
+- migration/import tooling for users moving from Home Assistant
 
-## Home Assistant Reference
+## Home Assistant Reference And Migration
 
 The upstream Home Assistant clone belongs under:
 
@@ -72,6 +72,12 @@ reference/home-assistant-core/
 That path is intentionally ignored in `.gitignore`. Use it for compatibility
 research only. Do not copy upstream code into the runtime unless a specific file
 is reviewed for license, necessity, and clean integration boundaries.
+
+Genie Home Runtime does not require or target a Home Assistant bridge as a core
+architecture path. The goal is native Genie device graph, automations, and
+actuation safety. For users who already have Home Assistant, we should plan
+low-effort migration paths: entity import, area/scene mapping, automation
+translation where safe, and clear compatibility reports.
 
 Clone/update reference:
 

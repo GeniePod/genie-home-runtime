@@ -20,7 +20,7 @@ The system prompt is not a safety boundary. The home runtime is.
 - Integration isolation: protocol adapters do not own core policy.
 - Memory constrained: default deployment target remains Jetson-class hardware.
 - AI-native boundary: expose stable structured APIs to `genie-claw`, not raw
-  Home Assistant internals.
+  third-party platform internals.
 
 ## Internal Layers
 
@@ -54,7 +54,8 @@ The first alpha scaffold implements this as a pure Rust policy in
 
 ## Home Assistant Relationship
 
-Home Assistant is a reference and bridge target, not the architecture owner.
+Home Assistant is a reference and migration source, not a bridge target and not
+the architecture owner.
 
 Use it to study:
 
@@ -62,10 +63,21 @@ Use it to study:
 - integration behavior
 - state shape and service semantics
 - compatibility expectations users already understand
+- migration needs for existing smart-home users
 
 Do not copy its Python runtime architecture into this project. Genie Home
 Runtime should remain Rust-first, smaller, more deterministic, and optimized
 for local AI actuation.
+
+The intended path for Home Assistant users is low-effort migration, not
+permanent dependency:
+
+- import entity names, domains, areas, and device metadata
+- map common scenes and simple automations into Genie-native models
+- report unsupported integrations clearly
+- keep physical execution under Genie runtime safety policy
+- avoid long-term architecture decisions that require Home Assistant to remain
+  installed
 
 ## Crates
 
@@ -76,7 +88,7 @@ for local AI actuation.
 
 - persisted SQLite state/audit log
 - HTTP or Unix-socket API for `genie-claw`
-- Home Assistant bridge adapter interface
+- Home Assistant migration compatibility report
 - initial MCP tool/resource surface
 - ESP32-C6 Thread/Matter capability boundary with GenieOS
 - support-bundle diagnostics compatible with `genie-ctl`
