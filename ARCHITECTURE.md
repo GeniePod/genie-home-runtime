@@ -90,6 +90,7 @@ The first stable boundary is JSON-shaped and intentionally small:
 
 - `status`: runtime health and safety policy summary
 - `list_entities`: current entity snapshots
+- `audit`: recent runtime decisions
 - `evaluate`: return a safety decision without mutating state
 - `execute`: apply the command only if the deterministic safety policy allows it
 
@@ -108,9 +109,16 @@ path is:
 Production packaging can move this to `/run/geniepod/home-runtime.sock` with
 systemd-owned permissions.
 
+Executed command decisions are appended to JSONL audit storage by the runtime
+process. The development default is:
+
+```text
+/tmp/genie-home-runtime-audit.jsonl
+```
+
 ## Next Alpha Targets
 
-- persisted SQLite state/audit log
+- persisted SQLite state store
 - production systemd unit for the Unix-socket API
 - Home Assistant migration compatibility report
 - initial MCP tool/resource surface

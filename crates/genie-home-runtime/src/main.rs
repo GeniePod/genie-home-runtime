@@ -1,8 +1,11 @@
 use anyhow::Result;
-use genie_home_core::{RuntimeRequest, demo_runtime, demo_turn_on_kitchen_command};
-use std::io::{Read, Write};
+use genie_home_core::{AuditEntry, RuntimeRequest, demo_runtime, demo_turn_on_kitchen_command};
+use std::fs::OpenOptions;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::Path;
 
 const DEFAULT_SOCKET_PATH: &str = "/tmp/genie-home-runtime.sock";
+const DEFAULT_AUDIT_LOG_PATH: &str = "/tmp/genie-home-runtime-audit.jsonl";
 
 fn main() -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
@@ -16,6 +19,9 @@ fn main() -> Result<()> {
             args.get(2)
                 .map(String::as_str)
                 .unwrap_or(DEFAULT_SOCKET_PATH),
+            args.get(3)
+                .map(String::as_str)
+                .unwrap_or(DEFAULT_AUDIT_LOG_PATH),
         )?,
         "request" => request(
             args.get(2)
@@ -87,9 +93,8 @@ fn handle_json_request(execute: bool) -> Result<()> {
 }
 
 #[cfg(unix)]
-fn serve(socket_path: &str) -> Result<()> {
+fn serve(socket_path: &str, audit_log_path: &str) -> Result<()> {
     use std::os::unix::net::UnixListener;
-    use std::path::Path;
 
     let path = Path::new(socket_path);
     if path.exists() {
@@ -103,14 +108,20 @@ fn serve(socket_path: &str) -> Result<()> {
 
     let listener = UnixListener::bind(path)?;
     let mut runtime = demo_runtime();
+    let restored = load_audit_entries(audit_log_path)?;
+    runtime.restore_audit_entries(restored);
     eprintln!("genie-home-runtime listening on {}", path.display());
+    eprintln!("audit log: {}", audit_log_path);
+    eprintln!("restored audit entries: {}", runtime.audit_len());
 
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
                 let mut input = String::new();
                 stream.read_to_string(&mut input)?;
+                let audit_start = runtime.audit_len();
                 let output = runtime.handle_request_json(&input);
+                append_new_audit_entries(audit_log_path, runtime.audit_since(audit_start))?;
                 stream.write_all(output.as_bytes())?;
                 stream.write_all(b"\n")?;
             }
@@ -124,7 +135,7 @@ fn serve(socket_path: &str) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn serve(_socket_path: &str) -> Result<()> {
+fn serve(_socket_path: &str, _audit_log_path: &str) -> Result<()> {
     anyhow::bail!("Unix socket runtime API is only supported on Unix targets")
 }
 
@@ -147,4 +158,44 @@ fn request(socket_path: &str) -> Result<()> {
 #[cfg(not(unix))]
 fn request(_socket_path: &str) -> Result<()> {
     anyhow::bail!("Unix socket runtime API is only supported on Unix targets")
+}
+
+fn append_new_audit_entries(path: &str, entries: &[AuditEntry]) -> Result<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    let path = Path::new(path);
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    for entry in entries {
+        serde_json::to_writer(&mut file, entry)?;
+        file.write_all(b"\n")?;
+    }
+    Ok(())
+}
+
+fn load_audit_entries(path: &str) -> Result<Vec<AuditEntry>> {
+    let path = Path::new(path);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let file = std::fs::File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut entries = Vec::new();
+    for (index, line) in reader.lines().enumerate() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let entry = serde_json::from_str(line)
+            .map_err(|err| anyhow::anyhow!("invalid audit log line {}: {err}", index + 1))?;
+        entries.push(entry);
+    }
+    Ok(entries)
 }

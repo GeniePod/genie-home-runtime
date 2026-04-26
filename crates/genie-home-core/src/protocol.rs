@@ -1,4 +1,4 @@
-use crate::{Entity, HomeCommand, RuntimeStatus, SafetyDecision};
+use crate::{AuditEntry, Entity, HomeCommand, RuntimeStatus, SafetyDecision};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum RuntimeRequest {
     Status,
     ListEntities,
+    Audit { limit: Option<usize> },
     Evaluate { command: HomeCommand },
     Execute { command: HomeCommand },
 }
@@ -22,6 +23,7 @@ pub struct ExecuteCommandRequest {
 pub enum RuntimeResponse {
     Status { status: RuntimeStatus },
     Entities { entities: Vec<EntitySnapshot> },
+    Audit { entries: Vec<AuditEntry> },
     Command { result: CommandResponse },
     Error { error: String },
 }

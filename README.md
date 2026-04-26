@@ -51,6 +51,7 @@ Implemented now:
 - appendable audit-entry model
 - JSON request/response contract for status, entity listing, evaluate, and execute
 - local Unix-socket JSON API for `genie-claw` and local tools
+- JSONL audit persistence for executed runtime decisions
 - basic CLI demo/status binary
 - Home Assistant reference checkout path ignored by git
 
@@ -102,12 +103,21 @@ echo '{"origin":"voice","action":{"target":{"entity_id":"light.kitchen","confide
 Run the local runtime socket API:
 
 ```bash
-cargo run -p genie-home-runtime -- serve /tmp/genie-home-runtime.sock
+cargo run -p genie-home-runtime -- serve \
+  /tmp/genie-home-runtime.sock \
+  /tmp/genie-home-runtime-audit.jsonl
 ```
 
 Send a request from another terminal:
 
 ```bash
 echo '{"type":"status"}' \
+  | cargo run -p genie-home-runtime -- request /tmp/genie-home-runtime.sock
+```
+
+Inspect recent in-memory audit entries:
+
+```bash
+echo '{"type":"audit","limit":10}' \
   | cargo run -p genie-home-runtime -- request /tmp/genie-home-runtime.sock
 ```

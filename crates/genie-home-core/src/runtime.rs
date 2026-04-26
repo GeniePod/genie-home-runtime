@@ -12,8 +12,9 @@ pub struct RuntimeStatus {
     pub safety_policy: SafetyPolicy,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuditEntry {
+    #[serde(with = "time::serde::rfc3339")]
     pub ts: OffsetDateTime,
     pub command: HomeCommand,
     pub decision: SafetyDecision,
@@ -59,6 +60,10 @@ impl HomeRuntime {
         &self.audit
     }
 
+    pub fn restore_audit_entries(&mut self, entries: impl IntoIterator<Item = AuditEntry>) {
+        self.audit.extend(entries);
+    }
+
     pub fn evaluate(&self, command: &HomeCommand) -> SafetyDecision {
         evaluate_command(&self.graph, command, &self.policy)
     }
@@ -84,6 +89,9 @@ impl HomeRuntime {
             RuntimeRequest::ListEntities => RuntimeResponse::Entities {
                 entities: self.graph.entities().map(EntitySnapshot::from).collect(),
             },
+            RuntimeRequest::Audit { limit } => RuntimeResponse::Audit {
+                entries: self.recent_audit(limit.unwrap_or(20)),
+            },
             RuntimeRequest::Evaluate { command } => {
                 let decision = self.evaluate(&command);
                 RuntimeResponse::Command {
@@ -103,6 +111,24 @@ impl HomeRuntime {
                 }
             }
         }
+    }
+
+    pub fn audit_len(&self) -> usize {
+        self.audit.len()
+    }
+
+    pub fn audit_since(&self, index: usize) -> &[AuditEntry] {
+        if index >= self.audit.len() {
+            &[]
+        } else {
+            &self.audit[index..]
+        }
+    }
+
+    pub fn recent_audit(&self, limit: usize) -> Vec<AuditEntry> {
+        let len = self.audit.len();
+        let start = len.saturating_sub(limit);
+        self.audit[start..].to_vec()
     }
 
     pub fn handle_request_json(&mut self, input: &str) -> String {
@@ -248,5 +274,43 @@ mod tests {
                 .unwrap()
                 .contains("invalid runtime request")
         );
+    }
+
+    #[test]
+    fn handle_audit_request_returns_recent_entries() {
+        let mut runtime = demo_runtime();
+        runtime.execute(demo_turn_on_kitchen_command());
+        let response = runtime.handle_request(RuntimeRequest::Audit { limit: Some(5) });
+
+        let RuntimeResponse::Audit { entries } = response else {
+            panic!("expected audit response");
+        };
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].decision.allowed);
+    }
+
+    #[test]
+    fn audit_entry_uses_rfc3339_timestamp_json() {
+        let mut runtime = demo_runtime();
+        runtime.execute(demo_turn_on_kitchen_command());
+
+        let json = serde_json::to_value(&runtime.audit()[0]).unwrap();
+        assert!(json["ts"].as_str().unwrap().ends_with('Z'));
+
+        let restored: AuditEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.command.action.kind, HomeActionKind::TurnOn);
+    }
+
+    #[test]
+    fn restores_persisted_audit_entries_without_replaying_actions() {
+        let id = EntityId::new("light.kitchen").unwrap();
+        let mut first = demo_runtime();
+        first.execute(demo_turn_on_kitchen_command());
+
+        let mut second = demo_runtime();
+        second.restore_audit_entries(first.audit().to_vec());
+
+        assert_eq!(second.audit().len(), 1);
+        assert_eq!(second.graph().get(&id).unwrap().state, EntityState::Off);
     }
 }
