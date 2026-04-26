@@ -1,8 +1,8 @@
 use anyhow::Result;
 use genie_home_core::{
     AuditEntry, ConnectivityReport, Device, Entity, RuntimeEvent, RuntimeRequest, RuntimeResponse,
-    build_home_assistant_migration_report, default_mcp_surface, demo_runtime,
-    demo_turn_on_kitchen_command, parse_home_assistant_entities_json, service_specs,
+    build_home_assistant_import_plan, build_home_assistant_migration_report, default_mcp_surface,
+    demo_runtime, demo_turn_on_kitchen_command, parse_home_assistant_entities_json, service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -36,6 +36,7 @@ fn main() -> Result<()> {
         "call-service" => handle_service_call()?,
         "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
+        "ha-import-plan" => print_ha_import_plan(args.get(2).map(String::as_str))?,
         "mcp-manifest" => print_mcp_manifest()?,
         "support-bundle" => print_support_bundle(
             args.get(2)
@@ -83,6 +84,7 @@ genie-home-runtime
 USAGE:
     genie-home-runtime <COMMAND>
     genie-home-runtime ha-compat-report [HA_STATES_JSON|-]
+    genie-home-runtime ha-import-plan [HA_STATES_JSON|-]
     genie-home-runtime support-bundle [AUDIT_LOG] [STATE_DB] [EVENT_LOG]
     genie-home-runtime serve [SOCKET] [AUDIT_LOG] [STATE_DB] [EVENT_LOG]
     genie-home-runtime request [SOCKET]
@@ -103,6 +105,7 @@ COMMANDS:
     call-service  Read a ServiceCall JSON from stdin and execute if allowed
     connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
+    ha-import-plan  Print a Genie connectivity import plan from Home Assistant states
     mcp-manifest  Print the local MCP-facing tool/resource manifest
     support-bundle  Print local JSON diagnostics for support
     serve     Serve RuntimeRequest JSON over a Unix socket
@@ -209,6 +212,13 @@ fn print_ha_compat_report(path: Option<&str>) -> Result<()> {
     let records = parse_home_assistant_entities_json(&input).map_err(anyhow::Error::msg)?;
     let report = build_home_assistant_migration_report(records);
     print_stdout_line(&serde_json::to_string_pretty(&report)?)
+}
+
+fn print_ha_import_plan(path: Option<&str>) -> Result<()> {
+    let input = read_path_or_stdin(path)?;
+    let records = parse_home_assistant_entities_json(&input).map_err(anyhow::Error::msg)?;
+    let plan = build_home_assistant_import_plan(records);
+    print_stdout_line(&serde_json::to_string_pretty(&plan)?)
 }
 
 fn print_connectivity_demo() -> Result<()> {

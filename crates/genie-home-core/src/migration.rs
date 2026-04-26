@@ -1,4 +1,7 @@
-use crate::entity::{Capability, EntityState, SafetyClass};
+use crate::connectivity::{
+    ConnectivityDevice, ConnectivityEntity, ConnectivityProtocol, ConnectivityReport,
+};
+use crate::entity::{Capability, EntityId, EntityState, SafetyClass};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -49,6 +52,13 @@ pub struct MigrationReport {
     pub candidates: Vec<MigrationCandidate>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MigrationImportPlan {
+    pub source: String,
+    pub report: ConnectivityReport,
+    pub skipped: Vec<MigrationCandidate>,
+}
+
 pub fn parse_home_assistant_entities_json(
     input: &str,
 ) -> Result<Vec<HomeAssistantEntityRecord>, String> {
@@ -72,6 +82,62 @@ pub fn build_home_assistant_migration_report(
         source: "home_assistant".into(),
         counts,
         candidates,
+    }
+}
+
+pub fn build_home_assistant_import_plan(
+    records: Vec<HomeAssistantEntityRecord>,
+) -> MigrationImportPlan {
+    let mut devices = Vec::new();
+    let mut skipped = Vec::new();
+    for record in records {
+        let candidate = build_candidate(record.clone());
+        if candidate.compatibility != MigrationCompatibility::Mappable {
+            skipped.push(candidate);
+            continue;
+        }
+        let Ok(entity_id) = EntityId::new(candidate.entity_id.clone()) else {
+            let mut invalid = candidate;
+            invalid.compatibility = MigrationCompatibility::Unsupported;
+            invalid
+                .notes
+                .push("entity id is not valid for Genie".into());
+            skipped.push(invalid);
+            continue;
+        };
+        let stable_id = record
+            .attributes
+            .get("device_id")
+            .and_then(Value::as_str)
+            .map(sanitize_stable_id)
+            .unwrap_or_else(|| format!("ha-{}", sanitize_stable_id(&candidate.entity_id)));
+        let area = record
+            .attributes
+            .get("area_id")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        devices.push(ConnectivityDevice {
+            stable_id,
+            protocol: ConnectivityProtocol::Matter,
+            manufacturer: Some("Home Assistant Migration".into()),
+            model: Some(candidate.domain.clone()),
+            entities: vec![ConnectivityEntity {
+                entity_id,
+                display_name: candidate.display_name,
+                area,
+                state: candidate.initial_state,
+                capabilities: candidate.capabilities,
+                safety_class: candidate.safety_class,
+            }],
+        });
+    }
+    MigrationImportPlan {
+        source: "home_assistant".into(),
+        report: ConnectivityReport {
+            source: "home_assistant_migration".into(),
+            devices,
+        },
+        skipped,
     }
 }
 
@@ -199,6 +265,19 @@ fn count_candidates(candidates: &[MigrationCandidate]) -> MigrationCounts {
     counts
 }
 
+fn sanitize_stable_id(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +314,25 @@ mod tests {
             report.candidates[0].compatibility,
             MigrationCompatibility::Unsupported
         );
+    }
+
+    #[test]
+    fn builds_import_plan_for_mappable_entities() {
+        let input = r#"[
+            {"entity_id":"light.kitchen","state":"on","attributes":{"friendly_name":"Kitchen Light","device_id":"abc123","area_id":"kitchen"}},
+            {"entity_id":"vacuum.robot","state":"docked","attributes":{}}
+        ]"#;
+
+        let records = parse_home_assistant_entities_json(input).unwrap();
+        let plan = build_home_assistant_import_plan(records);
+
+        assert_eq!(plan.report.source, "home_assistant_migration");
+        assert_eq!(plan.report.devices.len(), 1);
+        assert_eq!(plan.report.devices[0].stable_id, "abc123");
+        assert_eq!(
+            plan.report.devices[0].entities[0].area.as_deref(),
+            Some("kitchen")
+        );
+        assert_eq!(plan.skipped.len(), 1);
     }
 }

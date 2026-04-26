@@ -33,7 +33,8 @@ pub use event::{RuntimeEvent, RuntimeEventKind};
 pub use mcp::{McpPermission, McpResourceSpec, McpSurface, McpToolSpec, default_mcp_surface};
 pub use migration::{
     HomeAssistantEntityRecord, MigrationCandidate, MigrationCompatibility, MigrationCounts,
-    MigrationReport, build_home_assistant_migration_report, parse_home_assistant_entities_json,
+    MigrationImportPlan, MigrationReport, build_home_assistant_import_plan,
+    build_home_assistant_migration_report, parse_home_assistant_entities_json,
 };
 pub use protocol::{
     CommandResponse, DeviceSnapshot, EntitySnapshot, ExecuteCommandRequest, RuntimeRequest,

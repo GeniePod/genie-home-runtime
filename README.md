@@ -51,6 +51,7 @@ Implemented now:
 - Home Assistant-style runtime event log for state/service/connectivity/automation events
 - Home Assistant-style device registry with entity-to-device attribution
 - self-validation report for runtime registry and automation invariants
+- Home Assistant import plan that converts mappable states into Genie connectivity reports
 - command and action model
 - deterministic safety policy
 - in-memory runtime state
@@ -171,6 +172,7 @@ dump:
 ```bash
 curl -s http://homeassistant.local:8123/api/states > ha-states.json
 cargo run -p genie-home-runtime -- ha-compat-report ha-states.json
+cargo run -p genie-home-runtime -- ha-import-plan ha-states.json
 ```
 
 Production-style systemd reference files live in:

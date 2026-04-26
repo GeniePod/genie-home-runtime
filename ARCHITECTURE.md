@@ -157,6 +157,11 @@ analyze an HA-style states JSON dump and classify entities as `mappable`,
 `manual_review`, or `unsupported`, but it does not become a permanent bridge or
 delegate physical safety to Home Assistant.
 
+For migration execution planning, the runtime can convert mappable HA state
+records into a Genie connectivity report. That report can then be inspected and
+applied through the existing `apply_connectivity_report` path. Manual-review
+and unsupported records are kept out of the apply payload.
+
 GenieOS connectivity is modeled as a structured report boundary. GenieOS can
 publish discovered Matter, Thread, Zigbee, BLE, Wi-Fi, UART, or ESP32-C6-backed
 devices through `apply_connectivity_report`; the runtime translates those into
