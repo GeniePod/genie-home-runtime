@@ -67,3 +67,5 @@ Initial scaffold for Genie Home Runtime.
   connectivity discovery, and hardware-originated state reports.
 - Deterministic mock hardware fault-injection scenario for unavailable devices,
   degraded radio links, and command latency.
+- Scoped command approvals for confirmed indirect sensitive actions, preventing
+  generic confirmation flags from bypassing safety policy.

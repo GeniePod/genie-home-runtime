@@ -7,6 +7,7 @@ pub struct SafetyPolicy {
     pub min_target_confidence: f32,
     pub require_available_state: bool,
     pub require_confirmation_for_sensitive_indirect: bool,
+    pub require_structured_approval_for_indirect: bool,
     pub allow_critical_without_confirmation: bool,
 }
 
@@ -16,6 +17,7 @@ impl Default for SafetyPolicy {
             min_target_confidence: 0.78,
             require_available_state: true,
             require_confirmation_for_sensitive_indirect: true,
+            require_structured_approval_for_indirect: true,
             allow_critical_without_confirmation: false,
         }
     }
@@ -30,6 +32,7 @@ pub enum SafetyReason {
     TargetUnavailable,
     UnsupportedCapability,
     ConfirmationRequired,
+    ApprovalRequired,
     CriticalActionBlocked,
     SceneDefinitionMissing,
     SceneActionBlocked,
@@ -102,19 +105,36 @@ pub fn evaluate_command(
         );
     }
 
-    if entity.safety_class == SafetyClass::Critical
-        && !command.confirmed
-        && !policy.allow_critical_without_confirmation
-    {
-        return SafetyDecision::block(
-            SafetyReason::CriticalActionBlocked,
-            "critical target requires a stronger runtime approval path",
-        );
+    if entity.safety_class == SafetyClass::Critical && !policy.allow_critical_without_confirmation {
+        if !command.confirmed {
+            return SafetyDecision::block(
+                SafetyReason::CriticalActionBlocked,
+                "critical target requires a stronger runtime approval path",
+            );
+        }
+        if !has_structured_approval(command) {
+            return SafetyDecision::block(
+                SafetyReason::ApprovalRequired,
+                "critical target requires a scoped approval token",
+            );
+        }
     }
 
     if should_require_confirmation(entity, command, policy) {
         return SafetyDecision::require_confirmation(
             "sensitive physical action requires confirmation",
+        );
+    }
+
+    if command.confirmed
+        && policy.require_structured_approval_for_indirect
+        && is_indirect_origin(command.origin)
+        && action_needs_confirmation(entity, command, policy)
+        && !has_structured_approval(command)
+    {
+        return SafetyDecision::block(
+            SafetyReason::ApprovalRequired,
+            "indirect sensitive action requires a scoped approval token",
         );
     }
 
@@ -129,22 +149,38 @@ fn should_require_confirmation(
     if command.confirmed {
         return false;
     }
+    action_needs_confirmation(entity, command, policy)
+}
+
+fn action_needs_confirmation(
+    entity: &Entity,
+    command: &HomeCommand,
+    policy: &SafetyPolicy,
+) -> bool {
     if entity.safety_class == SafetyClass::Sensitive {
         return true;
     }
-    if !policy.require_confirmation_for_sensitive_indirect {
-        return false;
-    }
-    command.action.kind.is_sensitive()
-        && matches!(
-            command.origin,
-            CommandOrigin::Voice
-                | CommandOrigin::Agent
-                | CommandOrigin::Automation
-                | CommandOrigin::Schedule
-                | CommandOrigin::Bridge
-                | CommandOrigin::LocalApi
-        )
+    policy.require_confirmation_for_sensitive_indirect
+        && command.action.kind.is_sensitive()
+        && (matches!(command.origin, CommandOrigin::Voice) || is_indirect_origin(command.origin))
+}
+
+fn has_structured_approval(command: &HomeCommand) -> bool {
+    command
+        .approval
+        .as_ref()
+        .is_some_and(|approval| approval.is_valid_for(&command.action))
+}
+
+fn is_indirect_origin(origin: CommandOrigin) -> bool {
+    matches!(
+        origin,
+        CommandOrigin::Agent
+            | CommandOrigin::Automation
+            | CommandOrigin::Schedule
+            | CommandOrigin::Bridge
+            | CommandOrigin::LocalApi
+    )
 }
 
 fn entity_supports_action(entity: &Entity, action: &HomeActionKind) -> bool {
@@ -277,6 +313,76 @@ mod tests {
         let decision = evaluate_command(&graph, &command, &SafetyPolicy::default());
         assert!(!decision.allowed);
         assert!(decision.requires_confirmation);
+    }
+
+    #[test]
+    fn confirmed_indirect_sensitive_action_requires_scoped_approval() {
+        let id = EntityId::new("lock.front_door").unwrap();
+        let graph = graph_with(
+            Entity::new(id.clone(), "Front Door")
+                .with_state(EntityState::Locked)
+                .with_capability(Capability::Lock),
+        );
+        let command = HomeCommand::new(
+            CommandOrigin::LocalApi,
+            HomeAction {
+                target: TargetSelector::exact(id),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            },
+        )
+        .confirmed();
+
+        let decision = evaluate_command(&graph, &command, &SafetyPolicy::default());
+        assert!(!decision.allowed);
+        assert_eq!(decision.reason, SafetyReason::ApprovalRequired);
+    }
+
+    #[test]
+    fn scoped_approval_allows_indirect_sensitive_action() {
+        let id = EntityId::new("lock.front_door").unwrap();
+        let graph = graph_with(
+            Entity::new(id.clone(), "Front Door")
+                .with_state(EntityState::Locked)
+                .with_capability(Capability::Lock),
+        );
+        let command = HomeCommand::new(
+            CommandOrigin::LocalApi,
+            HomeAction {
+                target: TargetSelector::exact(id),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            },
+        )
+        .approved("approval-1", "dashboard");
+
+        let decision = evaluate_command(&graph, &command, &SafetyPolicy::default());
+        assert!(decision.allowed);
+    }
+
+    #[test]
+    fn mismatched_scoped_approval_is_rejected() {
+        let id = EntityId::new("lock.front_door").unwrap();
+        let other = EntityId::new("lock.back_door").unwrap();
+        let graph = graph_with(
+            Entity::new(id.clone(), "Front Door")
+                .with_state(EntityState::Locked)
+                .with_capability(Capability::Lock),
+        );
+        let mut command = HomeCommand::new(
+            CommandOrigin::LocalApi,
+            HomeAction {
+                target: TargetSelector::exact(id),
+                kind: HomeActionKind::Unlock,
+                value: None,
+            },
+        )
+        .approved("approval-1", "dashboard");
+        command.approval.as_mut().unwrap().entity_id = other;
+
+        let decision = evaluate_command(&graph, &command, &SafetyPolicy::default());
+        assert!(!decision.allowed);
+        assert_eq!(decision.reason, SafetyReason::ApprovalRequired);
     }
 
     #[test]

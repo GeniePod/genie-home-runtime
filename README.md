@@ -64,7 +64,8 @@ Implemented now:
 - normalized GenieOS adapter message envelope for heartbeat, adapter status,
   connectivity discovery, and state updates
 - GenieOS state report path for hardware-originated entity updates
-- deterministic safety policy
+- deterministic safety policy with scoped approvals for indirect sensitive
+  actions
 - in-memory runtime state
 - appendable audit-entry model
 - JSON request/response contract for status, entity listing, evaluate, and execute

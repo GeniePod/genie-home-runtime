@@ -28,7 +28,9 @@ pub mod validation;
 pub use automation::{
     Automation, AutomationBlock, AutomationCondition, AutomationTickResult, AutomationTrigger,
 };
-pub use command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
+pub use command::{
+    ActionApproval, CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector,
+};
 pub use connectivity::{
     ConnectivityApplyResult, ConnectivityDevice, ConnectivityEntity, ConnectivityProtocol,
     ConnectivityReport, EntityStateUpdate, StateApplyResult, StateReport,

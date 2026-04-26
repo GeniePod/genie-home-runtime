@@ -777,6 +777,7 @@ impl HomeRuntime {
                 origin: command.origin,
                 action: action.clone(),
                 confirmed: command.confirmed,
+                approval: command.approval.clone(),
                 reason: command.reason.clone(),
             };
             let decision = self.evaluate(&child);

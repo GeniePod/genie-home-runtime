@@ -48,6 +48,8 @@ Safety is inspired by autonomous-runtime discipline:
 - require confirmation for high-risk actions
 - require confirmation for sensitive indirect actions from agents,
   automations, schedules, bridges, and local APIs
+- require scoped approval grants for confirmed indirect sensitive actions, so a
+  generic `confirmed: true` flag cannot bypass physical safety
 - block ambiguous multi-target sensitive actions
 - record every decision
 

@@ -47,6 +47,36 @@ impl HomeActionKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActionApproval {
+    pub token_id: String,
+    pub approved_by: String,
+    pub entity_id: EntityId,
+    pub action_kind: HomeActionKind,
+}
+
+impl ActionApproval {
+    pub fn for_action(
+        token_id: impl Into<String>,
+        approved_by: impl Into<String>,
+        action: &HomeAction,
+    ) -> Self {
+        Self {
+            token_id: token_id.into(),
+            approved_by: approved_by.into(),
+            entity_id: action.target.entity_id.clone(),
+            action_kind: action.kind.clone(),
+        }
+    }
+
+    pub fn is_valid_for(&self, action: &HomeAction) -> bool {
+        !self.token_id.trim().is_empty()
+            && !self.approved_by.trim().is_empty()
+            && self.entity_id == action.target.entity_id
+            && self.action_kind == action.kind
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TargetSelector {
     pub entity_id: EntityId,
     pub confidence: f32,
@@ -73,6 +103,8 @@ pub struct HomeCommand {
     pub origin: CommandOrigin,
     pub action: HomeAction,
     pub confirmed: bool,
+    #[serde(default)]
+    pub approval: Option<ActionApproval>,
     pub reason: Option<String>,
 }
 
@@ -82,12 +114,23 @@ impl HomeCommand {
             origin,
             action,
             confirmed: false,
+            approval: None,
             reason: None,
         }
     }
 
     pub fn confirmed(mut self) -> Self {
         self.confirmed = true;
+        self
+    }
+
+    pub fn approved(mut self, token_id: impl Into<String>, approved_by: impl Into<String>) -> Self {
+        self.confirmed = true;
+        self.approval = Some(ActionApproval::for_action(
+            token_id,
+            approved_by,
+            &self.action,
+        ));
         self
     }
 }
