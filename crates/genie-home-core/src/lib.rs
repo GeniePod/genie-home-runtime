@@ -52,8 +52,9 @@ pub use migration::{
     build_home_assistant_migration_report, parse_home_assistant_entities_json,
 };
 pub use mock_hardware::{
-    HardwareInterface, MockHardwareBus, MockHardwareCommandResult, MockIoTEntity,
-    mock_turn_on_thread_lamp_command,
+    HardwareInterface, MockHardwareBus, MockHardwareCommandResult, MockHardwareFault,
+    MockHardwareFaultApplied, MockHardwareFaultScenarioResult, MockIoTEntity,
+    mock_turn_on_thread_lamp_command, run_mock_hardware_fault_scenario,
 };
 pub use protocol::{
     CommandResponse, ConfigChangeResult, ConfigResource, DeviceSnapshot, EntitySnapshot,

@@ -1,7 +1,8 @@
 use crate::{
-    Capability, CommandOrigin, ConnectivityDevice, ConnectivityEntity, ConnectivityProtocol,
-    ConnectivityReport, EntityId, EntityState, EntityStateUpdate, HomeActionKind, HomeCommand,
-    SafetyClass, StateReport, TargetSelector,
+    Capability, CommandOrigin, ConnectivityApplyResult, ConnectivityDevice, ConnectivityEntity,
+    ConnectivityProtocol, ConnectivityReport, EntityId, EntityState, EntityStateUpdate,
+    HomeActionKind, HomeCommand, HomeRuntime, SafetyClass, SafetyDecision, StateApplyResult,
+    StateReport, TargetSelector,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -48,6 +49,52 @@ pub struct MockHardwareCommandResult {
     pub message: String,
     pub latency_ms: u64,
     pub state_report: Option<StateReport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum MockHardwareFault {
+    SetOnline {
+        entity_id: EntityId,
+        online: bool,
+    },
+    SetState {
+        entity_id: EntityId,
+        state: EntityState,
+    },
+    SetRadio {
+        entity_id: EntityId,
+        rssi_dbm: i16,
+        link_quality: u8,
+    },
+    AddCommandLatency {
+        latency_ms: u64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MockHardwareFaultApplied {
+    pub source: String,
+    pub fault: MockHardwareFault,
+    pub applied: bool,
+    pub message: String,
+    pub state_report: Option<StateReport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MockHardwareFaultScenarioResult {
+    pub discovery_apply_result: ConnectivityApplyResult,
+    pub initial_state_apply_result: StateApplyResult,
+    pub latency_fault: MockHardwareFaultApplied,
+    pub radio_fault: MockHardwareFaultApplied,
+    pub offline_fault: MockHardwareFaultApplied,
+    pub offline_state_apply_result: Option<StateApplyResult>,
+    pub command: HomeCommand,
+    pub safety_decision: SafetyDecision,
+    pub hardware_command_result: Option<MockHardwareCommandResult>,
+    pub recovery_online_fault: MockHardwareFaultApplied,
+    pub recovery_state_fault: MockHardwareFaultApplied,
+    pub recovery_state_apply_result: Option<StateApplyResult>,
 }
 
 impl MockHardwareBus {
@@ -184,6 +231,23 @@ impl MockHardwareBus {
         })
     }
 
+    pub fn set_radio(
+        &mut self,
+        entity_id: &EntityId,
+        rssi_dbm: i16,
+        link_quality: u8,
+    ) -> Option<StateReport> {
+        let source = self.source.clone();
+        let sequence = self.next_sequence();
+        let entity = self.entities.get_mut(entity_id)?;
+        entity.rssi_dbm = rssi_dbm;
+        entity.link_quality = link_quality.min(100);
+        Some(StateReport {
+            source,
+            updates: vec![entity.state_update(sequence)],
+        })
+    }
+
     pub fn set_state(&mut self, entity_id: &EntityId, state: EntityState) -> Option<StateReport> {
         let source = self.source.clone();
         let sequence = self.next_sequence();
@@ -193,6 +257,71 @@ impl MockHardwareBus {
             source,
             updates: vec![entity.state_update(sequence)],
         })
+    }
+
+    pub fn apply_fault(&mut self, fault: MockHardwareFault) -> MockHardwareFaultApplied {
+        let source = self.source.clone();
+        match &fault {
+            MockHardwareFault::SetOnline { entity_id, online } => {
+                let state_report = self.set_online(entity_id, *online);
+                let applied = state_report.is_some();
+                MockHardwareFaultApplied {
+                    source,
+                    fault,
+                    applied,
+                    message: if applied {
+                        "mock online fault applied".into()
+                    } else {
+                        "fault target entity does not exist".into()
+                    },
+                    state_report,
+                }
+            }
+            MockHardwareFault::SetState { entity_id, state } => {
+                let state_report = self.set_state(entity_id, state.clone());
+                let applied = state_report.is_some();
+                MockHardwareFaultApplied {
+                    source,
+                    fault,
+                    applied,
+                    message: if applied {
+                        "mock state fault applied".into()
+                    } else {
+                        "fault target entity does not exist".into()
+                    },
+                    state_report,
+                }
+            }
+            MockHardwareFault::SetRadio {
+                entity_id,
+                rssi_dbm,
+                link_quality,
+            } => {
+                let state_report = self.set_radio(entity_id, *rssi_dbm, *link_quality);
+                let applied = state_report.is_some();
+                MockHardwareFaultApplied {
+                    source,
+                    fault,
+                    applied,
+                    message: if applied {
+                        "mock radio fault applied".into()
+                    } else {
+                        "fault target entity does not exist".into()
+                    },
+                    state_report,
+                }
+            }
+            MockHardwareFault::AddCommandLatency { latency_ms } => {
+                self.default_latency_ms = self.default_latency_ms.saturating_add(*latency_ms);
+                MockHardwareFaultApplied {
+                    source,
+                    fault,
+                    applied: true,
+                    message: "mock command latency fault applied".into(),
+                    state_report: None,
+                }
+            }
+        }
     }
 
     fn next_sequence(&mut self) -> u64 {
@@ -458,6 +587,70 @@ pub fn mock_turn_on_thread_lamp_command() -> HomeCommand {
     )
 }
 
+pub fn run_mock_hardware_fault_scenario() -> MockHardwareFaultScenarioResult {
+    let mut hardware = MockHardwareBus::reference_home();
+    let mut runtime = HomeRuntime::with_default_policy();
+    let entity_id = EntityId::new("light.mock_thread_lamp").expect("valid mock entity id");
+
+    let discovery_apply_result = runtime.apply_connectivity_report(hardware.discovery_report());
+    let initial_state_apply_result = runtime.apply_state_report(hardware.poll_state());
+    let latency_fault =
+        hardware.apply_fault(MockHardwareFault::AddCommandLatency { latency_ms: 250 });
+    let radio_fault = hardware.apply_fault(MockHardwareFault::SetRadio {
+        entity_id: entity_id.clone(),
+        rssi_dbm: -91,
+        link_quality: 8,
+    });
+    if let Some(report) = radio_fault.state_report.clone() {
+        runtime.apply_state_report(report);
+    }
+
+    let offline_fault = hardware.apply_fault(MockHardwareFault::SetOnline {
+        entity_id: entity_id.clone(),
+        online: false,
+    });
+    let offline_state_apply_result = offline_fault
+        .state_report
+        .clone()
+        .map(|report| runtime.apply_state_report(report));
+
+    let command = mock_turn_on_thread_lamp_command();
+    let safety_decision = runtime.execute(command.clone());
+    let hardware_command_result = if safety_decision.allowed {
+        Some(hardware.apply_command(&command))
+    } else {
+        None
+    };
+
+    let recovery_online_fault = hardware.apply_fault(MockHardwareFault::SetOnline {
+        entity_id: entity_id.clone(),
+        online: true,
+    });
+    let recovery_state_fault = hardware.apply_fault(MockHardwareFault::SetState {
+        entity_id,
+        state: EntityState::Off,
+    });
+    let recovery_state_apply_result = recovery_state_fault
+        .state_report
+        .clone()
+        .map(|report| runtime.apply_state_report(report));
+
+    MockHardwareFaultScenarioResult {
+        discovery_apply_result,
+        initial_state_apply_result,
+        latency_fault,
+        radio_fault,
+        offline_fault,
+        offline_state_apply_result,
+        command,
+        safety_decision,
+        hardware_command_result,
+        recovery_online_fault,
+        recovery_state_fault,
+        recovery_state_apply_result,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,6 +705,52 @@ mod tests {
             result.state_report.unwrap().updates[0].state,
             EntityState::Unavailable
         );
+    }
+
+    #[test]
+    fn faults_can_adjust_latency_and_radio_state() {
+        let mut hardware = MockHardwareBus::reference_home();
+        let id = EntityId::new("light.mock_thread_lamp").unwrap();
+        let latency_fault =
+            hardware.apply_fault(MockHardwareFault::AddCommandLatency { latency_ms: 250 });
+        let radio_fault = hardware.apply_fault(MockHardwareFault::SetRadio {
+            entity_id: id.clone(),
+            rssi_dbm: -92,
+            link_quality: 7,
+        });
+
+        assert!(latency_fault.applied);
+        assert!(radio_fault.applied);
+        let report = radio_fault.state_report.unwrap();
+        assert_eq!(
+            report.updates[0].attributes["rssi_dbm"],
+            serde_json::json!(-92)
+        );
+        assert_eq!(
+            report.updates[0].attributes["link_quality"],
+            serde_json::json!(7)
+        );
+
+        let result = hardware.apply_command(&mock_turn_on_thread_lamp_command());
+        assert_eq!(result.latency_ms, 285);
+    }
+
+    #[test]
+    fn fault_scenario_blocks_command_before_hardware_actuation() {
+        let scenario = run_mock_hardware_fault_scenario();
+
+        assert!(scenario.offline_fault.applied);
+        assert_eq!(
+            scenario
+                .offline_state_apply_result
+                .unwrap()
+                .entities_updated,
+            1
+        );
+        assert!(!scenario.safety_decision.allowed);
+        assert!(scenario.hardware_command_result.is_none());
+        assert!(scenario.recovery_online_fault.applied);
+        assert!(scenario.recovery_state_fault.applied);
     }
 
     #[test]

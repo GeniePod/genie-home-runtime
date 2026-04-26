@@ -80,6 +80,8 @@ Implemented now:
   `tools/call` execution against the runtime API
 - deterministic mock hardware simulator with Thread, Matter, Zigbee, and BLE
   reference devices plus media/vacuum/alarm devices for hardware-free tests
+- deterministic mock fault-injection scenario for offline devices, degraded
+  radio links, and command latency before physical hardware is available
 - mock Home Assistant porting harness that converts simulated hardware to
   HA-style states, runs migration/import, and validates the Genie runtime graph
 - reference systemd packaging for a production local socket service
@@ -142,6 +144,7 @@ cargo run -p genie-home-runtime -- services
 cargo run -p genie-home-runtime -- domains
 cargo run -p genie-home-runtime -- hardware
 cargo run -p genie-home-runtime -- mock-hardware-demo
+cargo run -p genie-home-runtime -- mock-fault-demo
 cargo run -p genie-home-runtime -- ha-mock-port-demo
 cargo run -p genie-home-runtime -- events
 cargo run -p genie-home-runtime -- scenes
@@ -190,6 +193,12 @@ Run a deterministic mock hardware flow:
 
 ```bash
 cargo run -p genie-home-runtime -- mock-hardware-demo
+```
+
+Run a deterministic mock fault-injection flow:
+
+```bash
+cargo run -p genie-home-runtime -- mock-fault-demo
 ```
 
 Run mock hardware through the Home Assistant migration/import path:

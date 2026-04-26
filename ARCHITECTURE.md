@@ -209,6 +209,12 @@ link quality, battery, and sequence numbers. This is not a replacement for
 GenieOS driver validation, but it lets the runtime and upper agent layer test
 realistic hardware flows before physical devices are present.
 
+The mock hardware layer includes deterministic fault injection for offline
+state, degraded radio quality, explicit state recovery, and command latency.
+The fault scenario verifies the safety-critical ordering: once a hardware state
+report marks a target unavailable, the runtime blocks the command before the
+mock hardware command path is called.
+
 The mock hardware layer also feeds Home Assistant porting work. The
 `ha_port` harness converts mock devices into Home Assistant-style state records,
 runs the compatibility report and import-plan code, applies the import to a

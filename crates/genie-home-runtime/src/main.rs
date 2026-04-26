@@ -6,7 +6,7 @@ use genie_home_core::{
     build_home_assistant_import_plan, build_home_assistant_migration_report,
     default_hardware_inventory, default_mcp_surface, demo_runtime, demo_turn_on_kitchen_command,
     domain_support_matrix, mock_turn_on_thread_lamp_command, parse_home_assistant_entities_json,
-    run_mock_home_assistant_port, service_specs,
+    run_mock_hardware_fault_scenario, run_mock_home_assistant_port, service_specs,
 };
 use rusqlite::{Connection, params, types::Type};
 use std::fs::OpenOptions;
@@ -53,6 +53,7 @@ fn main() -> Result<()> {
         "apply-state-report" => handle_state_report()?,
         "apply-genieos-message" => handle_genieos_message()?,
         "mock-hardware-demo" => print_mock_hardware_demo()?,
+        "mock-fault-demo" => print_mock_fault_demo()?,
         "ha-mock-port-demo" => print_ha_mock_port_demo()?,
         "connectivity-demo" => print_connectivity_demo()?,
         "ha-compat-report" => print_ha_compat_report(args.get(2).map(String::as_str))?,
@@ -136,6 +137,7 @@ COMMANDS:
     apply-state-report  Read a StateReport JSON from stdin and apply entity states
     apply-genieos-message  Read a GenieOsMessage JSON from stdin and apply it
     mock-hardware-demo  Run a deterministic mock hardware discovery/state/action demo
+    mock-fault-demo  Run deterministic mock hardware fault-injection demo
     ha-mock-port-demo  Run mock hardware through Home Assistant migration/import
     connectivity-demo  Print a sample GenieOS connectivity report request
     ha-compat-report  Print a Home Assistant migration compatibility report
@@ -316,6 +318,12 @@ fn print_mock_hardware_demo() -> Result<()> {
             report,
         }),
     }))?)
+}
+
+fn print_mock_fault_demo() -> Result<()> {
+    print_stdout_line(&serde_json::to_string_pretty(
+        &run_mock_hardware_fault_scenario(),
+    )?)
 }
 
 fn print_ha_mock_port_demo() -> Result<()> {
