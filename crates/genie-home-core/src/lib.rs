@@ -7,6 +7,7 @@
 pub mod automation;
 pub mod command;
 pub mod connectivity;
+pub mod device;
 pub mod entity;
 pub mod event;
 pub mod mcp;
@@ -25,6 +26,7 @@ pub use connectivity::{
     ConnectivityApplyResult, ConnectivityDevice, ConnectivityEntity, ConnectivityProtocol,
     ConnectivityReport,
 };
+pub use device::{Device, DeviceId, DeviceIdError, DeviceRegistry};
 pub use entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 pub use event::{RuntimeEvent, RuntimeEventKind};
 pub use mcp::{McpPermission, McpResourceSpec, McpSurface, McpToolSpec, default_mcp_surface};
@@ -33,7 +35,8 @@ pub use migration::{
     MigrationReport, build_home_assistant_migration_report, parse_home_assistant_entities_json,
 };
 pub use protocol::{
-    CommandResponse, EntitySnapshot, ExecuteCommandRequest, RuntimeRequest, RuntimeResponse,
+    CommandResponse, DeviceSnapshot, EntitySnapshot, ExecuteCommandRequest, RuntimeRequest,
+    RuntimeResponse,
 };
 pub use runtime::{
     AuditEntry, HomeRuntime, RuntimeStatus, demo_runtime, demo_turn_on_kitchen_command,

@@ -1,6 +1,6 @@
 use crate::{
     AuditEntry, Automation, AutomationTickResult, ConnectivityApplyResult, ConnectivityReport,
-    Entity, HomeCommand, RuntimeEvent, RuntimeStatus, SafetyDecision, Scene, ServiceCall,
+    Device, Entity, HomeCommand, RuntimeEvent, RuntimeStatus, SafetyDecision, Scene, ServiceCall,
     ServiceCallResult, ServiceSpec,
 };
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuntimeRequest {
     Status,
+    ListDevices,
     ListEntities,
     ListAutomations,
     ListServices,
@@ -33,6 +34,7 @@ pub struct ExecuteCommandRequest {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuntimeResponse {
     Status { status: RuntimeStatus },
+    Devices { devices: Vec<DeviceSnapshot> },
     Entities { entities: Vec<EntitySnapshot> },
     Automations { automations: Vec<Automation> },
     Services { services: Vec<ServiceSpec> },
@@ -57,10 +59,23 @@ pub struct EntitySnapshot {
     pub entity: Entity,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeviceSnapshot {
+    pub device: Device,
+}
+
 impl From<&Entity> for EntitySnapshot {
     fn from(entity: &Entity) -> Self {
         Self {
             entity: entity.clone(),
+        }
+    }
+}
+
+impl From<&Device> for DeviceSnapshot {
+    fn from(device: &Device) -> Self {
+        Self {
+            device: device.clone(),
         }
     }
 }

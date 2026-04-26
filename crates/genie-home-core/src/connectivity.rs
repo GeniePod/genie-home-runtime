@@ -31,7 +31,9 @@ impl ConnectivityEntity {
             id: self.entity_id,
             display_name: self.display_name,
             area: self.area,
+            device_id: None,
             state: self.state,
+            attributes: std::collections::BTreeMap::new(),
             capabilities: self.capabilities,
             safety_class: self.safety_class,
         }

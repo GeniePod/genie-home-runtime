@@ -91,6 +91,7 @@ permanent dependency:
 The first stable boundary is JSON-shaped and intentionally small:
 
 - `status`: runtime health and safety policy summary
+- `list_devices`: current device registry snapshots
 - `list_entities`: current entity snapshots
 - `list_services`: supported Home Assistant-style domain services
 - `list_scenes`: registered scene definitions
@@ -186,6 +187,11 @@ are mutated.
 Runtime events provide the Home Assistant-style observability plane. State
 changes, service calls, connectivity reports, and automation ticks are emitted
 as structured JSON events and persisted separately from the actuation audit log.
+
+Devices and entities are separate. A physical device may expose multiple
+entities, and entities can carry a `device_id` pointer. This matches the useful
+part of Home Assistant's registry model while keeping execution in Genie-owned
+policy and state.
 
 ## Next Alpha Targets
 

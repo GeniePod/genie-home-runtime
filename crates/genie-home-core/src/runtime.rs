@@ -3,9 +3,12 @@ use crate::automation::{
 };
 use crate::command::{CommandOrigin, HomeAction, HomeActionKind, HomeCommand, TargetSelector};
 use crate::connectivity::{ConnectivityApplyResult, ConnectivityReport};
+use crate::device::{Device, DeviceId, DeviceRegistry};
 use crate::entity::{Capability, Entity, EntityGraph, EntityId, EntityState};
 use crate::event::{RuntimeEvent, RuntimeEventKind};
-use crate::protocol::{CommandResponse, EntitySnapshot, RuntimeRequest, RuntimeResponse};
+use crate::protocol::{
+    CommandResponse, DeviceSnapshot, EntitySnapshot, RuntimeRequest, RuntimeResponse,
+};
 use crate::safety::{SafetyDecision, SafetyPolicy, SafetyReason, evaluate_command};
 use crate::scene::Scene;
 use crate::service::{
@@ -17,6 +20,7 @@ use time::OffsetDateTime;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeStatus {
+    pub device_count: usize,
     pub entity_count: usize,
     pub scene_count: usize,
     pub automation_count: usize,
@@ -35,6 +39,7 @@ pub struct AuditEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HomeRuntime {
+    devices: DeviceRegistry,
     graph: EntityGraph,
     scenes: BTreeMap<EntityId, Scene>,
     automations: BTreeMap<String, Automation>,
@@ -47,6 +52,7 @@ impl HomeRuntime {
     pub fn new(policy: SafetyPolicy) -> Self {
         Self {
             graph: EntityGraph::default(),
+            devices: DeviceRegistry::default(),
             scenes: BTreeMap::new(),
             automations: BTreeMap::new(),
             policy,
@@ -61,6 +67,14 @@ impl HomeRuntime {
 
     pub fn upsert_entity(&mut self, entity: Entity) {
         self.graph.upsert(entity);
+    }
+
+    pub fn upsert_device(&mut self, device: Device) {
+        self.devices.upsert(device);
+    }
+
+    pub fn devices(&self) -> impl Iterator<Item = &Device> {
+        self.devices.devices()
     }
 
     pub fn upsert_scene(&mut self, scene: Scene) {
@@ -85,6 +99,7 @@ impl HomeRuntime {
 
     pub fn status(&self) -> RuntimeStatus {
         RuntimeStatus {
+            device_count: self.devices.len(),
             entity_count: self.graph.len(),
             scene_count: self.scenes.len(),
             automation_count: self.automations.len(),
@@ -135,6 +150,9 @@ impl HomeRuntime {
         match request {
             RuntimeRequest::Status => RuntimeResponse::Status {
                 status: self.status(),
+            },
+            RuntimeRequest::ListDevices => RuntimeResponse::Devices {
+                devices: self.devices().map(DeviceSnapshot::from).collect(),
             },
             RuntimeRequest::ListEntities => RuntimeResponse::Entities {
                 entities: self.graph.entities().map(EntitySnapshot::from).collect(),
@@ -247,8 +265,30 @@ impl HomeRuntime {
     ) -> ConnectivityApplyResult {
         let mut entities_upserted = 0;
         for device in &report.devices {
+            let device_id = DeviceId::new(device.stable_id.clone())
+                .unwrap_or_else(|_| DeviceId::new("unknown-device").expect("valid fallback id"));
+            let mut registry_device = Device::new(
+                device_id.clone(),
+                device
+                    .model
+                    .clone()
+                    .unwrap_or_else(|| device.stable_id.clone()),
+            );
+            if let Some(manufacturer) = &device.manufacturer {
+                registry_device = registry_device.with_manufacturer(manufacturer.clone());
+            }
+            if let Some(model) = &device.model {
+                registry_device = registry_device.with_model(model.clone());
+            }
+            registry_device = registry_device.with_identifier(device.stable_id.clone());
+            self.upsert_device(registry_device);
             for entity in &device.entities {
-                self.upsert_entity(entity.clone().into_entity());
+                self.upsert_entity(
+                    entity
+                        .clone()
+                        .into_entity()
+                        .with_device_id(device_id.clone()),
+                );
                 entities_upserted += 1;
             }
         }
@@ -473,15 +513,31 @@ pub fn demo_runtime() -> HomeRuntime {
     let kitchen_light = EntityId::new("light.kitchen").expect("valid demo entity id");
     let front_door = EntityId::new("lock.front_door").expect("valid demo entity id");
     let movie_scene = EntityId::new("scene.movie_night").expect("valid demo entity id");
+    let kitchen_device = DeviceId::new("device.kitchen_light").expect("valid demo device id");
+    let front_door_device = DeviceId::new("device.front_door_lock").expect("valid demo device id");
+    runtime.upsert_device(
+        Device::new(kitchen_device.clone(), "Kitchen Light Device")
+            .with_manufacturer("GeniePod")
+            .with_model("Demo Light")
+            .with_area("kitchen"),
+    );
+    runtime.upsert_device(
+        Device::new(front_door_device.clone(), "Front Door Lock Device")
+            .with_manufacturer("GeniePod")
+            .with_model("Demo Lock")
+            .with_area("entry"),
+    );
     runtime.upsert_entity(
         Entity::new(kitchen_light.clone(), "Kitchen Light")
             .with_area("kitchen")
+            .with_device_id(kitchen_device)
             .with_state(EntityState::Off)
             .with_capability(Capability::Power),
     );
     runtime.upsert_entity(
         Entity::new(front_door, "Front Door")
             .with_area("entry")
+            .with_device_id(front_door_device)
             .with_state(EntityState::Locked)
             .with_capability(Capability::Lock),
     );
@@ -657,6 +713,26 @@ mod tests {
                 .graph()
                 .contains(&EntityId::new("light.thread_demo").unwrap())
         );
+        assert_eq!(runtime.devices().count(), 1);
+        assert!(
+            runtime
+                .graph()
+                .get(&EntityId::new("light.thread_demo").unwrap())
+                .unwrap()
+                .device_id
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn list_devices_returns_registered_devices() {
+        let mut runtime = demo_runtime();
+        let response = runtime.handle_request(RuntimeRequest::ListDevices);
+
+        let RuntimeResponse::Devices { devices } = response else {
+            panic!("expected devices response");
+        };
+        assert_eq!(devices.len(), 2);
     }
 
     #[test]

@@ -37,5 +37,6 @@ Initial scaffold for Genie Home Runtime.
 - Home Assistant-style service catalog and safety-gated service-call execution.
 - Runtime event log for state changes, service calls, connectivity reports, and
   automation ticks.
+- Device registry with entity-to-device attribution and SQLite persistence.
 - Home Assistant local reference workflow under ignored `reference/`, framed for
   compatibility research and migration planning rather than a required bridge.

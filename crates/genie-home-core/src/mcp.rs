@@ -56,6 +56,12 @@ pub fn default_mcp_surface() -> McpSurface {
                 serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             tool(
+                "home.list_devices",
+                "Return current device registry snapshots.",
+                vec![McpPermission::HomeRead],
+                serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+            ),
+            tool(
                 "home.list_services",
                 "Return supported Home Assistant-style domain services.",
                 vec![McpPermission::HomeRead],
@@ -154,6 +160,12 @@ pub fn default_mcp_surface() -> McpSurface {
                 "genie-home://entities",
                 "entities",
                 "Current Genie Home Runtime entity graph snapshot.",
+                vec![McpPermission::HomeRead],
+            ),
+            resource(
+                "genie-home://devices",
+                "devices",
+                "Current Genie Home Runtime device registry snapshot.",
                 vec![McpPermission::HomeRead],
             ),
             resource(

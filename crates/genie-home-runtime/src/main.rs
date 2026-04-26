@@ -1,6 +1,6 @@
 use anyhow::Result;
 use genie_home_core::{
-    AuditEntry, ConnectivityReport, Entity, RuntimeEvent, RuntimeRequest, RuntimeResponse,
+    AuditEntry, ConnectivityReport, Device, Entity, RuntimeEvent, RuntimeRequest, RuntimeResponse,
     build_home_assistant_migration_report, default_mcp_surface, demo_runtime,
     demo_turn_on_kitchen_command, parse_home_assistant_entities_json, service_specs,
 };
@@ -22,6 +22,7 @@ fn main() -> Result<()> {
         "status" => print_status()?,
         "demo" => run_demo()?,
         "entities" => list_entities()?,
+        "devices" => list_devices()?,
         "services" => list_services()?,
         "events" => list_demo_events()?,
         "scenes" => list_scenes()?,
@@ -88,6 +89,7 @@ USAGE:
 COMMANDS:
     status    Print demo runtime status
     demo      Run an in-memory safety/action demo
+    devices   Print demo device registry
     entities  Print demo entity graph
     services  Print supported HA-style domain services
     events    Print demo runtime events
@@ -122,6 +124,12 @@ fn run_demo() -> Result<()> {
 fn list_entities() -> Result<()> {
     let mut runtime = demo_runtime();
     let response = runtime.handle_request(RuntimeRequest::ListEntities);
+    print_stdout_line(&serde_json::to_string_pretty(&response)?)
+}
+
+fn list_devices() -> Result<()> {
+    let mut runtime = demo_runtime();
+    let response = runtime.handle_request(RuntimeRequest::ListDevices);
     print_stdout_line(&serde_json::to_string_pretty(&response)?)
 }
 
@@ -252,6 +260,14 @@ fn serve(
     let listener = UnixListener::bind(path)?;
     let mut runtime = demo_runtime();
     let mut state_store = SqliteStateStore::open(state_db_path)?;
+    let restored_devices = state_store.load_devices()?;
+    if restored_devices.is_empty() {
+        state_store.save_devices(runtime.devices())?;
+    } else {
+        for device in restored_devices {
+            runtime.upsert_device(device);
+        }
+    }
     let restored_entities = state_store.load_entities()?;
     if restored_entities.is_empty() {
         state_store.save_entities(runtime.graph().entities())?;
@@ -281,6 +297,7 @@ fn serve(
                 let event_start = runtime.event_len();
                 let response = handle_runtime_request(&mut runtime, &input);
                 if response_persists_entities(&response) {
+                    state_store.save_devices(runtime.devices())?;
                     state_store.save_entities(runtime.graph().entities())?;
                 }
                 let output = serialize_runtime_response(&response);
@@ -416,6 +433,7 @@ fn build_support_bundle(
 ) -> Result<serde_json::Value> {
     let audit = load_audit_entries(audit_log_path)?;
     let events = load_event_entries(event_log_path)?;
+    let devices = load_devices_from_state_db(state_db_path)?;
     let entities = load_entities_from_state_db(state_db_path)?;
     let mut recent_audit = audit.iter().rev().take(20).cloned().collect::<Vec<_>>();
     recent_audit.reverse();
@@ -439,16 +457,25 @@ fn build_support_bundle(
             "state_db_exists": Path::new(state_db_path).exists(),
         },
         "counts": {
+            "devices": devices.len(),
             "entities": entities.len(),
             "audit_entries": audit.len(),
             "recent_audit_entries": recent_audit.len(),
             "event_entries": events.len(),
             "recent_event_entries": recent_events.len(),
         },
+        "devices": devices,
         "entities": entities,
         "recent_audit": recent_audit,
         "recent_events": recent_events,
     }))
+}
+
+fn load_devices_from_state_db(path: &str) -> Result<Vec<Device>> {
+    if !Path::new(path).exists() {
+        return Ok(Vec::new());
+    }
+    SqliteStateStore::open(path)?.load_devices()
 }
 
 fn load_entities_from_state_db(path: &str) -> Result<Vec<Entity>> {
@@ -510,9 +537,32 @@ impl SqliteStateStore {
                 json TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS devices (
+                id TEXT PRIMARY KEY NOT NULL,
+                json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             ",
         )?;
         Ok(Self { conn })
+    }
+
+    fn load_devices(&self) -> Result<Vec<Device>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT json FROM devices ORDER BY id ASC")?;
+        let rows = stmt.query_map([], |row| {
+            let json: String = row.get(0)?;
+            serde_json::from_str(&json).map_err(|err| {
+                rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(err))
+            })
+        })?;
+
+        let mut devices = Vec::new();
+        for row in rows {
+            devices.push(row?);
+        }
+        Ok(devices)
     }
 
     fn load_entities(&self) -> Result<Vec<Entity>> {
@@ -531,6 +581,26 @@ impl SqliteStateStore {
             entities.push(row?);
         }
         Ok(entities)
+    }
+
+    fn save_devices<'a>(&mut self, devices: impl IntoIterator<Item = &'a Device>) -> Result<()> {
+        let updated_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
+        let tx = self.conn.transaction()?;
+        for device in devices {
+            let json = serde_json::to_string(device)?;
+            tx.execute(
+                "\
+                INSERT INTO devices (id, json, updated_at)
+                VALUES (?1, ?2, ?3)
+                ON CONFLICT(id) DO UPDATE SET
+                    json = excluded.json,
+                    updated_at = excluded.updated_at
+                ",
+                params![device.id.as_str(), json, updated_at],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     fn save_entities<'a>(&mut self, entities: impl IntoIterator<Item = &'a Entity>) -> Result<()> {
@@ -576,13 +646,16 @@ mod tests {
         let mut runtime = demo_runtime();
         runtime.execute(demo_turn_on_kitchen_command());
 
+        store.save_devices(runtime.devices()).unwrap();
         store.save_entities(runtime.graph().entities()).unwrap();
+        let devices = store.load_devices().unwrap();
         let entities = store.load_entities().unwrap();
         let kitchen = entities
             .iter()
             .find(|entity| entity.id.as_str() == "light.kitchen")
             .unwrap();
 
+        assert_eq!(devices.len(), 2);
         assert_eq!(kitchen.state, EntityState::On);
         let _ = std::fs::remove_file(path);
     }
@@ -606,6 +679,7 @@ mod tests {
         let mut store = SqliteStateStore::open(&db_path).unwrap();
         let mut runtime = demo_runtime();
         runtime.execute(demo_turn_on_kitchen_command());
+        store.save_devices(runtime.devices()).unwrap();
         store.save_entities(runtime.graph().entities()).unwrap();
         append_new_audit_entries(&audit_path, runtime.audit()).unwrap();
         append_new_event_entries(&event_path, runtime.events()).unwrap();
@@ -613,6 +687,7 @@ mod tests {
         let bundle = build_support_bundle(&audit_path, &db_path, &event_path).unwrap();
 
         assert_eq!(bundle["schema"], "genie.home.support_bundle.v1");
+        assert_eq!(bundle["counts"]["devices"], 2);
         assert_eq!(bundle["counts"]["entities"], 3);
         assert_eq!(bundle["counts"]["audit_entries"], 1);
         assert_eq!(bundle["counts"]["event_entries"], 1);

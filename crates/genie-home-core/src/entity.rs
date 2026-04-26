@@ -91,7 +91,11 @@ pub struct Entity {
     pub id: EntityId,
     pub display_name: String,
     pub area: Option<String>,
+    #[serde(default)]
+    pub device_id: Option<crate::DeviceId>,
     pub state: EntityState,
+    #[serde(default)]
+    pub attributes: BTreeMap<String, serde_json::Value>,
     pub capabilities: BTreeSet<Capability>,
     pub safety_class: SafetyClass,
 }
@@ -110,7 +114,9 @@ impl Entity {
             id,
             display_name: display_name.into(),
             area: None,
+            device_id: None,
             state: EntityState::Unknown,
+            attributes: BTreeMap::new(),
             capabilities: BTreeSet::new(),
             safety_class: SafetyClass::Normal,
         }
@@ -121,8 +127,18 @@ impl Entity {
         self
     }
 
+    pub fn with_device_id(mut self, device_id: crate::DeviceId) -> Self {
+        self.device_id = Some(device_id);
+        self
+    }
+
     pub fn with_state(mut self, state: EntityState) -> Self {
         self.state = state;
+        self
+    }
+
+    pub fn with_attribute(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+        self.attributes.insert(key.into(), value);
         self
     }
 
